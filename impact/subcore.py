@@ -45,7 +45,7 @@ def inference_bbox(
 
     results = [[], [], [], []]
     for i in range(len(bboxes)):
-        results[0].append(pred[0].names[i])
+        results[0].append(pred[0].names[0])
         results[1].append(bboxes[i])
         results[2].append(segms[i])
         results[3].append(pred[0].boxes[i].conf.cpu().numpy())
