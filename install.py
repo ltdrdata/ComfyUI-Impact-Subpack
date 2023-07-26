@@ -2,8 +2,8 @@ import os
 import sys
 from torchvision.datasets.utils import download_url
 
-comfy_path = '../../..'
 subpack_path = os.path.join(os.path.dirname(__file__))
+comfy_path = os.path.join(subpack_path, '..', '..', '..')
 
 sys.path.append(comfy_path)
 
