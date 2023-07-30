@@ -7,10 +7,9 @@ import numpy as np
 from torchvision.transforms.functional import to_pil_image
 import torch
 
+from ultralytics import YOLO
 
 def load_yolo(model_path: str):
-    from ultralytics import YOLO
-
     try:
         return YOLO(model_path)
     except ModuleNotFoundError:
