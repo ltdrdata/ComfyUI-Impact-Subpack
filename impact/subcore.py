@@ -44,7 +44,7 @@ def inference_bbox(
 
     results = [[], [], [], []]
     for i in range(len(bboxes)):
-        results[0].append(pred[0].names[0])
+        results[0].append(pred[0].names[int(pred[0].boxes[i].cls.item())])
         results[1].append(bboxes[i])
         results[2].append(segms[i])
         results[3].append(pred[0].boxes[i].conf.cpu().numpy())
@@ -68,7 +68,7 @@ def inference_segm(
 
     results = [[], [], [], []]
     for i in range(len(bboxes)):
-        results[0].append(pred[0].names[0])
+        results[0].append(pred[0].names[int(pred[0].boxes[i].cls.item())])
         results[1].append(bboxes[i])
 
         mask = torch.from_numpy(segms[i])
@@ -100,7 +100,7 @@ class UltraBBoxDetector:
         h = image.shape[1]
         w = image.shape[2]
 
-        for x in segmasks:
+        for x, label in zip(segmasks, detected_results[0]):
             item_bbox = x[0]
             item_mask = x[1]
 
@@ -113,7 +113,7 @@ class UltraBBoxDetector:
                 confidence = x[2]
                 # bbox_size = (item_bbox[2]-item_bbox[0],item_bbox[3]-item_bbox[1]) # (w,h)
 
-                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox)
+                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label)
 
                 items.append(item)
 
@@ -150,7 +150,7 @@ class UltraSegmDetector:
         h = image.shape[1]
         w = image.shape[2]
 
-        for x in segmasks:
+        for x, label in zip(segmasks, detected_results[0]):
             item_bbox = x[0]
             item_mask = x[1]
 
@@ -163,7 +163,7 @@ class UltraSegmDetector:
                 confidence = x[2]
                 # bbox_size = (item_bbox[2]-item_bbox[0],item_bbox[3]-item_bbox[1]) # (w,h)
 
-                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox)
+                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label)
 
                 items.append(item)
 
