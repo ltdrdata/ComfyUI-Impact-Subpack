@@ -113,7 +113,7 @@ class UltraBBoxDetector:
                 confidence = x[2]
                 # bbox_size = (item_bbox[2]-item_bbox[0],item_bbox[3]-item_bbox[1]) # (w,h)
 
-                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label)
+                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label, None)
 
                 items.append(item)
 
@@ -163,7 +163,7 @@ class UltraSegmDetector:
                 confidence = x[2]
                 # bbox_size = (item_bbox[2]-item_bbox[0],item_bbox[3]-item_bbox[1]) # (w,h)
 
-                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label)
+                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label, None)
 
                 items.append(item)
 
