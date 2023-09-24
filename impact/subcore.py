@@ -28,7 +28,12 @@ def inference_bbox(
 
     bboxes = pred[0].boxes.xyxy.cpu().numpy()
     cv2_image = np.array(image)
-    cv2_image = cv2_image[:, :, ::-1].copy()
+    if len(cv2_image.shape) == 3:
+        cv2_image = cv2_image[:, :, ::-1].copy()  # Convert RGB to BGR for cv2 processing
+    else:
+        # Handle the grayscale image here
+        # For example, you might want to convert it to a 3-channel grayscale image for consistency:
+        cv2_image = cv2.cvtColor(cv2_image, cv2.COLOR_GRAY2BGR)
     cv2_gray = cv2.cvtColor(cv2_image, cv2.COLOR_BGR2GRAY)
 
     segms = []
