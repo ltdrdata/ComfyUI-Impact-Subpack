@@ -126,7 +126,7 @@ class UltraBBoxDetector:
         return shape, items
 
     def detect_combined(self, image, threshold, dilation):
-        detected_results = inference_bbox(self.bbox_model, image, threshold)
+        detected_results = inference_bbox(self.bbox_model, core.tensor2pil(image), threshold)
         segmasks = core.create_segmasks(detected_results)
         if dilation > 0:
             segmasks = core.dilate_masks(segmasks, dilation)
@@ -176,7 +176,7 @@ class UltraSegmDetector:
         return shape, items
 
     def detect_combined(self, image, threshold, dilation):
-        detected_results = inference_bbox(self.bbox_model, image, threshold)
+        detected_results = inference_segm(self.bbox_model, core.tensor2pil(image), threshold)
         segmasks = core.create_segmasks(detected_results)
         if dilation > 0:
             segmasks = core.dilate_masks(segmasks, dilation)
