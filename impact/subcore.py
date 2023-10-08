@@ -64,12 +64,14 @@ def inference_segm(
     device: str = "",
 ):
     pred = model(image, conf=confidence, device=device)
-    bboxes = pred[0].boxes.xyxy.cpu().numpy()
-    segms = pred[0].masks.data.cpu().numpy()
 
+    bboxes = pred[0].boxes.xyxy.cpu().numpy()
     n, m = bboxes.shape
     if n == 0:
         return [[], [], [], []]
+
+    # NOTE: masks.data will be None when n == 0
+    segms = pred[0].masks.data.cpu().numpy()
 
     results = [[], [], [], []]
     for i in range(len(bboxes)):
