@@ -95,7 +95,7 @@ class UltraBBoxDetector:
     def __init__(self, bbox_model):
         self.bbox_model = bbox_model
 
-    def detect(self, image, threshold, dilation, crop_factor, drop_size=1):
+    def detect(self, image, threshold, dilation, crop_factor, drop_size=1, detailer_hook=None):
         drop_size = max(drop_size, 1)
         detected_results = inference_bbox(self.bbox_model, core.tensor2pil(image), threshold)
         segmasks = core.create_segmasks(detected_results)
@@ -115,6 +115,10 @@ class UltraBBoxDetector:
 
             if x2 - x1 > drop_size and y2 - y1 > drop_size:  # minimum dimension must be (2,2) to avoid squeeze issue
                 crop_region = core.make_crop_region(w, h, item_bbox, crop_factor)
+
+                if detailer_hook is not None:
+                    crop_region = detailer_hook.post_crop_region(w, h, item_bbox, crop_region)
+
                 cropped_image = core.crop_image(image, crop_region)
                 cropped_mask = core.crop_ndarray2(item_mask, crop_region)
                 confidence = x[2]
@@ -145,7 +149,7 @@ class UltraSegmDetector:
     def __init__(self, bbox_model):
         self.bbox_model = bbox_model
 
-    def detect(self, image, threshold, dilation, crop_factor, drop_size=1):
+    def detect(self, image, threshold, dilation, crop_factor, drop_size=1, detailer_hook=None):
         drop_size = max(drop_size, 1)
         detected_results = inference_segm(self.bbox_model, core.tensor2pil(image), threshold)
         segmasks = core.create_segmasks(detected_results)
@@ -165,6 +169,10 @@ class UltraSegmDetector:
 
             if x2 - x1 > drop_size and y2 - y1 > drop_size:  # minimum dimension must be (2,2) to avoid squeeze issue
                 crop_region = core.make_crop_region(w, h, item_bbox, crop_factor)
+
+                if detailer_hook is not None:
+                    crop_region = detailer_hook.post_crop_region(w, h, item_bbox, crop_region)
+
                 cropped_image = core.crop_image(image, crop_region)
                 cropped_mask = core.crop_ndarray2(item_mask, crop_region)
                 confidence = x[2]
