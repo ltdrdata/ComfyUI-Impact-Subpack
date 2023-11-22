@@ -7,7 +7,13 @@ import numpy as np
 from torchvision.transforms.functional import to_pil_image
 import torch
 
-from ultralytics import YOLO
+try:
+    from ultralytics import YOLO
+except Exception as e:
+    print(e)
+    print(f"\n!!!!!\n\n[ComfyUI-Impact-Subpack] If this error occurs, please check the following link:\n\thttps://github.com/ltdrdata/ComfyUI-Impact-Pack/blob/Main/troubleshooting/TROUBLESHOOTING.md\n\n!!!!!\n")
+    pass
+
 
 def load_yolo(model_path: str):
     try:
