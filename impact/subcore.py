@@ -12,7 +12,7 @@ try:
 except Exception as e:
     print(e)
     print(f"\n!!!!!\n\n[ComfyUI-Impact-Subpack] If this error occurs, please check the following link:\n\thttps://github.com/ltdrdata/ComfyUI-Impact-Pack/blob/Main/troubleshooting/TROUBLESHOOTING.md\n\n!!!!!\n")
-    pass
+    raise e
 
 
 def load_yolo(model_path: str):
