@@ -135,7 +135,12 @@ class UltraBBoxDetector:
                 items.append(item)
 
         shape = image.shape[1], image.shape[2]
-        return shape, items
+        segs = shape, items
+
+        if detailer_hook is not None and hasattr(detailer_hook, "post_detection"):
+            segs = detailer_hook.post_detection(segs)
+
+        return segs
 
     def detect_combined(self, image, threshold, dilation):
         detected_results = inference_bbox(self.bbox_model, core.tensor2pil(image), threshold)
@@ -189,7 +194,12 @@ class UltraSegmDetector:
                 items.append(item)
 
         shape = image.shape[1], image.shape[2]
-        return shape, items
+        segs = shape, items
+
+        if detailer_hook is not None and hasattr(detailer_hook, "post_detection"):
+            segs = detailer_hook.post_detection(segs)
+
+        return segs
 
     def detect_combined(self, image, threshold, dilation):
         detected_results = inference_segm(self.bbox_model, core.tensor2pil(image), threshold)
