@@ -1,1 +1,1 @@
-ultralytics!=8.0.177
+ultralytics!=8.2.5
