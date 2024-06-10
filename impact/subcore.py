@@ -79,12 +79,33 @@ def inference_segm(
     # NOTE: masks.data will be None when n == 0
     segms = pred[0].masks.data.cpu().numpy()
 
+    h_segms = segms.shape[1]
+    w_segms = segms.shape[2]
+    h_orig = image.size[1]
+    w_orig = image.size[0]
+    ratio_segms = h_segms / w_segms
+    ratio_orig = h_orig / w_orig
+
+    if ratio_segms == ratio_orig:
+        h_gap = 0
+        w_gap = 0
+    elif ratio_segms > ratio_orig:
+        h_gap = int((ratio_segms - ratio_orig) * h_segms)
+        w_gap = 0
+    else:
+        h_gap = 0
+        ratio_segms = w_segms / h_segms
+        ratio_orig = w_orig / h_orig
+        w_gap = int((ratio_segms - ratio_orig) * w_segms)
+
     results = [[], [], [], []]
     for i in range(len(bboxes)):
         results[0].append(pred[0].names[int(pred[0].boxes[i].cls.item())])
         results[1].append(bboxes[i])
 
         mask = torch.from_numpy(segms[i])
+        mask = mask[h_gap:mask.shape[0] - h_gap, w_gap:mask.shape[1] - w_gap]
+
         scaled_mask = torch.nn.functional.interpolate(mask.unsqueeze(0).unsqueeze(0), size=(image.size[1], image.size[0]),
                                                       mode='bilinear', align_corners=False)
         scaled_mask = scaled_mask.squeeze().squeeze()
