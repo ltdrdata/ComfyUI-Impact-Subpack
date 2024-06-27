@@ -4,7 +4,7 @@ import impact.core as core
 import impact.subcore as subcore
 from impact.utils import add_folder_path_and_extensions
 
-version_code = 21
+version_code = 22
 
 print(f"### Loading: ComfyUI-Impact-Pack (Subpack: V0.6)")
 
