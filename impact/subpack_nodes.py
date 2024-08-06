@@ -27,6 +27,8 @@ class UltralyticsDetectorProvider:
 
     def doit(self, model_name):
         model_path = folder_paths.get_full_path("ultralytics", model_name)
+        if model_path is None and (model_name.startswith("bbox/") or model_name.startswith("segm/")):    # Allow segm/bbox models to be located in the same folder for shared model storage with other UIs
+            model_path = folder_paths.get_full_path("ultralytics", model_name[5:])
         model = subcore.load_yolo(model_path)
 
         if model_name.startswith("bbox"):
