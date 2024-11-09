@@ -18,7 +18,12 @@ except Exception as e:
 
 # HOTFIX: https://github.com/ltdrdata/ComfyUI-Impact-Pack/issues/754
 # importing YOLO breaking original torch.load capabilities
-torch.load = orig_torch_load  
+def torch_wrapper(*args, **kwargs):
+    kwargs['weights_only'] = False
+    # https://github.com/comfyanonymous/ComfyUI/issues/5516#issuecomment-2466152838
+    return orig_torch_load(*args, **kwargs)
+
+torch.load = torch_wrapper
 
 def load_yolo(model_path: str):
     try:

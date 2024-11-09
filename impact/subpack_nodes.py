@@ -4,9 +4,9 @@ import impact.core as core
 import impact.subcore as subcore
 from impact.utils import add_folder_path_and_extensions
 
-version_code = 23
+version_code = 24
 
-print(f"### Loading: ComfyUI-Impact-Pack (Subpack: V0.7)")
+print(f"### Loading: ComfyUI-Impact-Pack (Subpack: V0.8)")
 
 model_path = folder_paths.models_dir
 add_folder_path_and_extensions("ultralytics_bbox", [os.path.join(model_path, "ultralytics", "bbox")], folder_paths.supported_pt_extensions)
