@@ -1,13 +1,41 @@
 from pathlib import Path
 from PIL import Image
 
-import impact.core as core
 import cv2
 import numpy as np
 from torchvision.transforms.functional import to_pil_image
 import torch
+from collections import namedtuple
+from . import utils
+
 
 orig_torch_load = torch.load
+
+
+SEG = namedtuple("SEG",
+                 ['cropped_image', 'cropped_mask', 'confidence', 'crop_region', 'bbox', 'label', 'control_net_wrapper'],
+                 defaults=[None])
+
+
+class NO_BBOX_DETECTOR:
+    pass
+
+
+class NO_SEGM_DETECTOR:
+    pass
+
+
+def create_segmasks(results):
+    bboxs = results[1]
+    segms = results[2]
+    confidence = results[3]
+
+    results = []
+    for i in range(len(segms)):
+        item = (bboxs[i], segms[i].astype(np.float32), confidence[i])
+        results.append(item)
+    return results
+
 
 try:
     from ultralytics import YOLO
@@ -134,11 +162,11 @@ class UltraBBoxDetector:
 
     def detect(self, image, threshold, dilation, crop_factor, drop_size=1, detailer_hook=None):
         drop_size = max(drop_size, 1)
-        detected_results = inference_bbox(self.bbox_model, core.tensor2pil(image), threshold)
-        segmasks = core.create_segmasks(detected_results)
+        detected_results = inference_bbox(self.bbox_model, utils.tensor2pil(image), threshold)
+        segmasks = create_segmasks(detected_results)
 
         if dilation > 0:
-            segmasks = core.dilate_masks(segmasks, dilation)
+            segmasks = utils.dilate_masks(segmasks, dilation)
 
         items = []
         h = image.shape[1]
@@ -151,17 +179,17 @@ class UltraBBoxDetector:
             y1, x1, y2, x2 = item_bbox
 
             if x2 - x1 > drop_size and y2 - y1 > drop_size:  # minimum dimension must be (2,2) to avoid squeeze issue
-                crop_region = core.make_crop_region(w, h, item_bbox, crop_factor)
+                crop_region = utils.make_crop_region(w, h, item_bbox, crop_factor)
 
                 if detailer_hook is not None:
                     crop_region = detailer_hook.post_crop_region(w, h, item_bbox, crop_region)
 
-                cropped_image = core.crop_image(image, crop_region)
-                cropped_mask = core.crop_ndarray2(item_mask, crop_region)
+                cropped_image = utils.crop_image(image, crop_region)
+                cropped_mask = utils.crop_ndarray2(item_mask, crop_region)
                 confidence = x[2]
                 # bbox_size = (item_bbox[2]-item_bbox[0],item_bbox[3]-item_bbox[1]) # (w,h)
 
-                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label, None)
+                item = SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label, None)
 
                 items.append(item)
 
@@ -174,12 +202,12 @@ class UltraBBoxDetector:
         return segs
 
     def detect_combined(self, image, threshold, dilation):
-        detected_results = inference_bbox(self.bbox_model, core.tensor2pil(image), threshold)
-        segmasks = core.create_segmasks(detected_results)
+        detected_results = inference_bbox(self.bbox_model, utils.tensor2pil(image), threshold)
+        segmasks = create_segmasks(detected_results)
         if dilation > 0:
-            segmasks = core.dilate_masks(segmasks, dilation)
+            segmasks = utils.dilate_masks(segmasks, dilation)
 
-        return core.combine_masks(segmasks)
+        return utils.combine_masks(segmasks)
 
     def setAux(self, x):
         pass
@@ -193,11 +221,11 @@ class UltraSegmDetector:
 
     def detect(self, image, threshold, dilation, crop_factor, drop_size=1, detailer_hook=None):
         drop_size = max(drop_size, 1)
-        detected_results = inference_segm(self.bbox_model, core.tensor2pil(image), threshold)
-        segmasks = core.create_segmasks(detected_results)
+        detected_results = inference_segm(self.bbox_model, utils.tensor2pil(image), threshold)
+        segmasks = create_segmasks(detected_results)
 
         if dilation > 0:
-            segmasks = core.dilate_masks(segmasks, dilation)
+            segmasks = utils.dilate_masks(segmasks, dilation)
 
         items = []
         h = image.shape[1]
@@ -210,17 +238,17 @@ class UltraSegmDetector:
             y1, x1, y2, x2 = item_bbox
 
             if x2 - x1 > drop_size and y2 - y1 > drop_size:  # minimum dimension must be (2,2) to avoid squeeze issue
-                crop_region = core.make_crop_region(w, h, item_bbox, crop_factor)
+                crop_region = utils.make_crop_region(w, h, item_bbox, crop_factor)
 
                 if detailer_hook is not None:
                     crop_region = detailer_hook.post_crop_region(w, h, item_bbox, crop_region)
 
-                cropped_image = core.crop_image(image, crop_region)
-                cropped_mask = core.crop_ndarray2(item_mask, crop_region)
+                cropped_image = utils.crop_image(image, crop_region)
+                cropped_mask = utils.crop_ndarray2(item_mask, crop_region)
                 confidence = x[2]
                 # bbox_size = (item_bbox[2]-item_bbox[0],item_bbox[3]-item_bbox[1]) # (w,h)
 
-                item = core.SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label, None)
+                item = SEG(cropped_image, cropped_mask, confidence, crop_region, item_bbox, label, None)
 
                 items.append(item)
 
@@ -233,12 +261,12 @@ class UltraSegmDetector:
         return segs
 
     def detect_combined(self, image, threshold, dilation):
-        detected_results = inference_segm(self.bbox_model, core.tensor2pil(image), threshold)
-        segmasks = core.create_segmasks(detected_results)
+        detected_results = inference_segm(self.bbox_model, utils.tensor2pil(image), threshold)
+        segmasks = create_segmasks(detected_results)
         if dilation > 0:
-            segmasks = core.dilate_masks(segmasks, dilation)
+            segmasks = utils.dilate_masks(segmasks, dilation)
 
-        return core.combine_masks(segmasks)
+        return utils.combine_masks(segmasks)
 
     def setAux(self, x):
         pass

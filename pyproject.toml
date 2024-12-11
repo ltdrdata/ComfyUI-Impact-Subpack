@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-impact-subpack"
+description = "This node pack provides nodes that complement the Impact Pack, such as the UltralyticsDetectorProvider."
+version = "1.0"
+license = { file = "LICENSE.txt" }
+dependencies = ["matplotlib", "ultralytics==8.3.40"]
+
+[project.urls]
+Repository = "https://github.com/ltdrdata/ComfyUI-Impact-Subpack"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "drltdata"
+DisplayName = "ComfyUI Impact Subpack"
+Icon = ""

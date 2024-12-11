@@ -1,17 +1,12 @@
 import os
 import folder_paths
-import impact.core as core
-import impact.subcore as subcore
-from impact.utils import add_folder_path_and_extensions
-
-version_code = 24
-
-print(f"### Loading: ComfyUI-Impact-Pack (Subpack: V0.8)")
+from . import subcore
+from . import utils
 
 model_path = folder_paths.models_dir
-add_folder_path_and_extensions("ultralytics_bbox", [os.path.join(model_path, "ultralytics", "bbox")], folder_paths.supported_pt_extensions)
-add_folder_path_and_extensions("ultralytics_segm", [os.path.join(model_path, "ultralytics", "segm")], folder_paths.supported_pt_extensions)
-add_folder_path_and_extensions("ultralytics", [os.path.join(model_path, "ultralytics")], folder_paths.supported_pt_extensions)
+utils.add_folder_path_and_extensions("ultralytics_bbox", [os.path.join(model_path, "ultralytics", "bbox")], folder_paths.supported_pt_extensions)
+utils.add_folder_path_and_extensions("ultralytics_segm", [os.path.join(model_path, "ultralytics", "segm")], folder_paths.supported_pt_extensions)
+utils.add_folder_path_and_extensions("ultralytics", [os.path.join(model_path, "ultralytics")], folder_paths.supported_pt_extensions)
 
 
 class UltralyticsDetectorProvider:
@@ -30,7 +25,7 @@ class UltralyticsDetectorProvider:
         model = subcore.load_yolo(model_path)
 
         if model_name.startswith("bbox"):
-            return subcore.UltraBBoxDetector(model), core.NO_SEGM_DETECTOR()
+            return subcore.UltraBBoxDetector(model), subcore.NO_SEGM_DETECTOR()
         else:
             return subcore.UltraBBoxDetector(model), subcore.UltraSegmDetector(model)
 
