@@ -2,6 +2,7 @@ import folder_paths
 from PIL import Image
 import numpy as np
 import cv2
+import torch
 
 
 def add_folder_path_and_extensions(folder_name, full_folder_paths, extensions):
