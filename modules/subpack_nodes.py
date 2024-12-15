@@ -1,12 +1,16 @@
+import logging
 import os
 import folder_paths
 from . import subcore
 from . import utils
+import logging
 
 model_path = folder_paths.models_dir
 utils.add_folder_path_and_extensions("ultralytics_bbox", [os.path.join(model_path, "ultralytics", "bbox")], folder_paths.supported_pt_extensions)
 utils.add_folder_path_and_extensions("ultralytics_segm", [os.path.join(model_path, "ultralytics", "segm")], folder_paths.supported_pt_extensions)
 utils.add_folder_path_and_extensions("ultralytics", [os.path.join(model_path, "ultralytics")], folder_paths.supported_pt_extensions)
+logging.info(f'[Inspire Pack] ultralytics_bbox: {os.path.join(model_path, "ultralytics", "bbox")}')
+logging.info(f'[Inspire Pack] ultralytics_segm: {os.path.join(model_path, "ultralytics", "segm")}')
 
 
 class UltralyticsDetectorProvider:
