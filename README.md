@@ -15,6 +15,22 @@ This node pack provides nodes that complement the [ComfyUI Impact Pack](https://
 * civitai/[adetailer](https://civitai.com/search/models?sortBy=models_v5&query=adetailer) - You can download various types detection models....Many models are associated with NSFW content.
 
 
+## How To Install?
+
+### Install via ComfyUI-Manager (Recommended)
+* Search `ComfyUI Impact Subpack` in ComfyUI-Manager and click `Install` button.
+
+### Manual Install (Not Recommended)
+1. `cd custom_nodes`
+2. `git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack`
+3. `cd ComfyUI-Impact-Subpack`
+4. `pip install -r requirements.txt`
+    * **IMPORTANT**:
+        * You must install it within the Python environment where ComfyUI is running.
+        * For the portable version, use `<installed path>\python_embeded\python.exe -m pip` instead of `pip`. For a `venv`, activate the `venv` first and then use `pip`.
+5. Restart ComfyUI
+
+
 ## Credits
 
 ComfyUI/[ComfyUI](https://github.com/comfyanonymous/ComfyUI) - A powerful and modular stable diffusion GUI.
