@@ -120,18 +120,29 @@ except Exception as e:
 # HOTFIX: https://github.com/ltdrdata/ComfyUI-Impact-Pack/issues/754
 # importing YOLO breaking original torch.load capabilities
 def torch_wrapper(*args, **kwargs):
-    return orig_torch_load(*args, **kwargs)
+    if hasattr(torch.serialization, 'safe_globals'):
+        return orig_torch_load(*args, **kwargs)
+    else:
+        logging.warning("[Impact Subpack] Your torch version is outdated, and security features cannot be applied properly.")
+        return orig_torch_load(*args, **kwargs, weights_only=False)
 
 torch.load = torch_wrapper
 
 
 def load_yolo(model_path: str):
     # https://github.com/comfyanonymous/ComfyUI/issues/5516#issuecomment-2466152838
-    with torch.serialization.safe_globals(torch_whitelist):
+    if hasattr(torch.serialization, 'safe_globals'):
+        with torch.serialization.safe_globals(torch_whitelist):
+            try:
+                return YOLO(model_path)
+            except ModuleNotFoundError:
+                # https://github.com/ultralytics/ultralytics/issues/3856
+                YOLO("yolov8n.pt")
+                return YOLO(model_path)
+    else:
         try:
             return YOLO(model_path)
         except ModuleNotFoundError:
-            # https://github.com/ultralytics/ultralytics/issues/3856
             YOLO("yolov8n.pt")
             return YOLO(model_path)
 
