@@ -6,10 +6,11 @@
 """
 
 import importlib
+import logging
 
-version_code = [1, 1]
+version_code = [1, 2]
 version_str = f"V{version_code[0]}.{version_code[1]}" + (f'.{version_code[2]}' if len(version_code) > 2 else '')
-print(f"### Loading: ComfyUI-Impact-Subpack ({version_str})")
+logging.info(f"### Loading: ComfyUI-Impact-Subpack ({version_str})")
 
 node_list = [
     "subpack_nodes",
