@@ -37,6 +37,18 @@ def create_segmasks(results):
     return results
 
 
+# Limit the commands that can be executed through `getattr` to `ultralytics.nn.modules.head.Detect.forward`.
+def restricted_getattr(obj, name, *args):
+    if name != "forward":
+        logging.error(f"Access to potentially dangerous attribute '{obj.__module__}.{obj.__name__}.{name}' is blocked.\nIf you believe the use of this code is genuinely safe, please report it.\nhttps://github.com/ltdrdata/ComfyUI-Impact-Subpack/issues")
+        raise RuntimeError(f"Access to potentially dangerous attribute '{obj.__module__}.{obj.__name__}.{name}' is blocked.")
+        
+    return getattr(obj, name, *args)
+
+restricted_getattr.__module__ = 'builtins'
+restricted_getattr.__name__ = 'getattr'
+
+
 try:
     from ultralytics import YOLO
     from ultralytics.nn.tasks import DetectionModel
@@ -108,7 +120,7 @@ try:
 
         torch_whitelist += [DetectionModel, aliasYOLOv10DetectionModel, SegmentationModel, IterableSimpleNamespace,
                             aliasIterableSimpleNamespace, TaskAlignedAssigner, aliasTaskAlignedAssigner, aliasv10DetectLoss,
-                            getattr, dill._dill._load_type, scalar, dtype, Float64DType]
+                            restricted_getattr, dill._dill._load_type, scalar, dtype, Float64DType]
 
     build_torch_whitelist()
 
