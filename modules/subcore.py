@@ -136,7 +136,8 @@ def torch_wrapper(*args, **kwargs):
         return orig_torch_load(*args, **kwargs)
     else:
         logging.warning("[Impact Subpack] Your torch version is outdated, and security features cannot be applied properly.")
-        return orig_torch_load(*args, **kwargs, weights_only=False)
+        kwargs['weights_only'] = False
+        return orig_torch_load(*args, **kwargs)
 
 torch.load = torch_wrapper
 
