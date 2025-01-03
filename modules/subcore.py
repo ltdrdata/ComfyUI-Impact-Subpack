@@ -61,8 +61,8 @@ try:
     import ultralytics.utils.loss as loss_modules
     import dill._dill
     from numpy.core.multiarray import scalar
-    from numpy import dtype
     try:
+        from numpy import dtype
         from numpy.dtypes import Float64DType
     except:
         logging.error("[Impact Subpack] installed 'numpy' is outdated. Please update 'numpy' to 1.26.4")
