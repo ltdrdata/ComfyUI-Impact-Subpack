@@ -138,7 +138,7 @@ except Exception as e:
 # importing YOLO breaking original torch.load capabilities
 def torch_wrapper(*args, **kwargs):
     if hasattr(torch.serialization, 'safe_globals'):
-        return orig_torch_load(*args, **kwargs)
+        return orig_torch_load(*args, **kwargs)  # NOTE: This code simply delegates the call to torch.load, and any errors that occur here are not the responsibility of Subpack.
     else:
         logging.warning("[Impact Subpack] Your torch version is outdated, and security features cannot be applied properly.")
         kwargs['weights_only'] = False
