@@ -62,7 +62,12 @@ try:
     import dill._dill
     from numpy.core.multiarray import scalar
     from numpy import dtype
-    from numpy.dtypes import Float64DType
+    try:
+        from numpy.dtypes import Float64DType
+    except:
+        logging.error("[Impact Subpack] installed 'numpy' is outdated. Please update 'numpy' to 1.26.4")
+        raise Exception("[Impact Subpack] installed 'numpy' is outdated. Please update 'numpy' to 1.26.4")
+
 
     torch_whitelist = []
 
