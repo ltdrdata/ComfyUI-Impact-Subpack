@@ -137,11 +137,24 @@ except Exception as e:
 # HOTFIX: https://github.com/ltdrdata/ComfyUI-Impact-Pack/issues/754
 # importing YOLO breaking original torch.load capabilities
 def torch_wrapper(*args, **kwargs):
+    # NOTE: A trick to support code based on `'weights_only' in torch.load.__code__.co_varnames`.
+    if 'weights_only' in kwargs:
+        weights_only = kwargs.pop('weights_only')
+    else:
+        weights_only = None
+
     if hasattr(torch.serialization, 'safe_globals'):
+        if weights_only is not None:
+            kwargs['weights_only'] = weights_only
+
         return orig_torch_load(*args, **kwargs)  # NOTE: This code simply delegates the call to torch.load, and any errors that occur here are not the responsibility of Subpack.
     else:
-        logging.warning("[Impact Subpack] Your torch version is outdated, and security features cannot be applied properly.")
-        kwargs['weights_only'] = False
+        if weights_only is not None:
+            kwargs['weights_only'] = weights_only
+        else:
+            logging.warning("[Impact Subpack] Your torch version is outdated, and security features cannot be applied properly.")
+            kwargs['weights_only'] = False
+
         return orig_torch_load(*args, **kwargs)
 
 torch.load = torch_wrapper
