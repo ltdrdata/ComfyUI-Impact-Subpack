@@ -30,6 +30,21 @@ class UltralyticsDetectorProvider:
 
     def doit(self, model_name):
         model_path = folder_paths.get_full_path("ultralytics", model_name)
+
+        if model_path is None:
+            print(f"[Impact Subpack] model file '{model_name}' is not found in one of the following directories:")
+
+            cands = []
+            cands.extend(folder_paths.get_folder_paths("ultralytics"))
+            if model_name.startswith('bbox/'):
+                cands.extend(folder_paths.get_folder_paths("ultralytics_bbox"))
+            elif model_name.startswith('segm/'):
+                cands.extend(folder_paths.get_folder_paths("ultralytics_segm"))
+
+            print(f'\t{"\n\t".join(cands)}\n')
+
+            raise ValueError(f"[Impact Subpack] model file '{model_name}' is not found.")
+
         model = subcore.load_yolo(model_path)
 
         if model_name.startswith("bbox"):
