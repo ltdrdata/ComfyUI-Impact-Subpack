@@ -41,7 +41,8 @@ class UltralyticsDetectorProvider:
             elif model_name.startswith('segm/'):
                 cands.extend(folder_paths.get_folder_paths("ultralytics_segm"))
 
-            print(f'\t{"\n\t".join(cands)}\n')
+            formatted_cands = "\n\t".join(cands)
+            print(f'\t{formatted_cands}\n')
 
             raise ValueError(f"[Impact Subpack] model file '{model_name}' is not found.")
 
