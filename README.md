@@ -15,6 +15,12 @@ This node pack provides nodes that complement the [ComfyUI Impact Pack](https://
 * civitai/[adetailer](https://civitai.com/search/models?sortBy=models_v5&query=adetailer) - You can download various types detection models....Many models are associated with NSFW content.
 
 
+## Paths
+* In `extra_model_paths.yaml`, you can add the following entries:
+- `ultralytics_bbox` - Specifies the paths for bbox YOLO models.
+- `ultralytics_segm` - Specifies the paths for segm YOLO models.
+
+
 ## How To Install?
 
 ### Install via ComfyUI-Manager (Recommended)
