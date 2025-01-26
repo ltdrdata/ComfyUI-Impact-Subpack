@@ -19,6 +19,7 @@ This node pack provides nodes that complement the [ComfyUI Impact Pack](https://
 * In `extra_model_paths.yaml`, you can add the following entries:
 - `ultralytics_bbox` - Specifies the paths for bbox YOLO models.
 - `ultralytics_segm` - Specifies the paths for segm YOLO models.
+- `ultralytics` - Allows the presence of `bbox/` and `segm/` subdirectories.
 
 
 ## How To Install?
