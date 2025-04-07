@@ -8,6 +8,8 @@ from . import utils
 import inspect
 import logging
 
+import pickle
+
 
 orig_torch_load = torch.load
 
@@ -136,26 +138,94 @@ except Exception as e:
 
 # HOTFIX: https://github.com/ltdrdata/ComfyUI-Impact-Pack/issues/754
 # importing YOLO breaking original torch.load capabilities
+
+# --- Start: REPLACE the existing torch_wrapper function ---
+
 def torch_wrapper(*args, **kwargs):
-    # NOTE: A trick to support code based on `'weights_only' in torch.load.__code__.co_varnames`.
-    if 'weights_only' in kwargs:
-        weights_only = kwargs.pop('weights_only')
-    else:
-        weights_only = None
+    """
+    Wrapper for torch.load that attempts safe loading (weights_only=True) first.
+    If a specific UnpicklingError related to disallowed globals (like 'getattr')
+    occurs with newer PyTorch versions, it logs a warning and retries with
+    weights_only=False for compatibility with older formats.
+    Requires trusting the source file if the fallback occurs.
+    """
+    # Use the globally saved original torch.load reference from the top of the file
+    # Check if weights_only was explicitly passed by the caller
+    weights_only_explicit = kwargs.get('weights_only', None) # Read value without popping yet
 
+    # Check if using newer PyTorch with safe_globals attribute (indicates >= 2.6 behavior likely)
     if hasattr(torch.serialization, 'safe_globals'):
-        if weights_only is not None:
-            kwargs['weights_only'] = weights_only
 
-        return orig_torch_load(*args, **kwargs)  # NOTE: This code simply delegates the call to torch.load, and any errors that occur here are not the responsibility of Subpack.
+        # Determine the effective weights_only setting for the FIRST attempt
+        # Prioritize explicit setting, otherwise default to True (safe)
+        effective_weights_only = weights_only_explicit if weights_only_explicit is not None else True
+        
+        load_kwargs = kwargs.copy()
+        load_kwargs['weights_only'] = effective_weights_only # Set for the first attempt
+
+        try:
+            # --- Attempt 1: Safe Load ---
+            # Try loading with the determined weights_only setting (usually True)
+            if effective_weights_only:
+                print(f"[Impact Pack/Subpack] Attempting safe load (weights_only=True)...")
+            else:
+                 print(f"[Impact Pack/Subpack] Explicit weights_only=False requested. Attempting unsafe load...")
+
+            # Call original torch.load using the determined kwargs
+            return orig_torch_load(*args, **load_kwargs)
+
+        except pickle.UnpicklingError as e:
+            # --- Handle Specific Load Failure ---
+            # Check if the error is the specific one caused by disallowed globals
+            # like 'getattr' AND we were attempting a safe load (weights_only=True)
+            # Using 'getattr' because it was the specific error reported.
+            is_disallowed_global_error = 'getattr' in str(e)
+
+            if is_disallowed_global_error and effective_weights_only:
+                # --- Fallback: Unsafe Load ---
+                print("##############################################################################")
+                print(f"[Impact Pack/Subpack] WARNING: Safe load failed (Reason: {e}).")
+                print(" >> This often happens with older .pt/.pth formats using specific")
+                print(" >> Python features (like 'getattr') blocked by default for security")
+                print(" >> in newer PyTorch versions (>= 2.6).")
+                print(" >> RETRYING WITH 'weights_only=False'.")
+                print(" >> SECURITY RISK: This bypasses a PyTorch security feature.")
+                print(" >> ENSURE YOU TRUST THE SOURCE of the file being loaded:")
+                # Try to display the filename if available in args
+                filename_arg = args[0] if args else load_kwargs.get('f', '[unknown file]')
+                print(f" >> File: {filename_arg}")
+                print(" >> Prefer using .safetensors files whenever available.")
+                print("##############################################################################")
+
+                # Modify the local kwargs copy for the retry attempt
+                load_kwargs['weights_only'] = False
+                # Call the original function again, now unsafely
+                return orig_torch_load(*args, **load_kwargs)
+            else:
+                # If it's a different error OR weights_only was already False,
+                # re-raise the original error. Don't bypass other issues.
+                print(f"[Impact Pack/Subpack] Load failed with an unrelated error or weights_only=False was already set. Re-raising original error.")
+                raise e # Re-raise the original exception
+        except Exception as e:
+             # Catch any other unexpected loading errors
+             print(f"[Impact Pack/Subpack] Error: An unexpected error occurred during torch load wrapper: {e}")
+             raise e # Re-raise the error
+
     else:
-        if weights_only is not None:
-            kwargs['weights_only'] = weights_only
+        # --- Handle Older PyTorch Versions ---
+        # Use a local copy of kwargs here too for consistency
+        load_kwargs = kwargs.copy()
+        # If weights_only was explicitly passed, use that value
+        if weights_only_explicit is not None:
+            load_kwargs['weights_only'] = weights_only_explicit
         else:
-            logging.warning("[Impact Subpack] Your torch version is outdated, and security features cannot be applied properly.")
-            kwargs['weights_only'] = False
+            # Otherwise, default to False for old versions and maybe warn
+            load_kwargs['weights_only'] = False
 
-        return orig_torch_load(*args, **kwargs)
+        # Call the original torch.load for older versions
+        return orig_torch_load(*args, **load_kwargs)
+
+# --- End: Replacement block for the torch_wrapper function ---
 
 torch.load = torch_wrapper
 
