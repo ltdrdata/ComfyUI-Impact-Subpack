@@ -9,7 +9,8 @@ import inspect
 import logging
 
 
-orig_torch_load = torch.load
+device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+orig_torch_load = torch.load(map_location=device)
 
 
 SEG = namedtuple("SEG",
