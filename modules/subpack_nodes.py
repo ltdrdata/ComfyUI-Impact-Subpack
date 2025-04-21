@@ -32,7 +32,7 @@ class UltralyticsDetectorProvider:
         model_path = folder_paths.get_full_path("ultralytics", model_name)
 
         if model_path is None:
-            print(f"[Impact Subpack] model file '{model_name}' is not found in one of the following directories:")
+            logging.error(f"[Impact Subpack] model file '{model_name}' is not found in one of the following directories:")
 
             cands = []
             cands.extend(folder_paths.get_folder_paths("ultralytics"))
@@ -42,7 +42,7 @@ class UltralyticsDetectorProvider:
                 cands.extend(folder_paths.get_folder_paths("ultralytics_segm"))
 
             formatted_cands = "\n\t".join(cands)
-            print(f'\t{formatted_cands}\n')
+            logging.error(f'\t{formatted_cands}\n')
 
             raise ValueError(f"[Impact Subpack] model file '{model_name}' is not found.")
 
