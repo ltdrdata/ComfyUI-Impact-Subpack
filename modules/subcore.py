@@ -190,7 +190,7 @@ def restricted_getattr(obj, name, *args):
     if name != "forward":
         logging.error(f"Access to potentially dangerous attribute '{obj.__module__}.{obj.__name__}.{name}' is blocked.\nIf you believe the use of this code is genuinely safe, please report it.\nhttps://github.com/ltdrdata/ComfyUI-Impact-Subpack/issues")
         raise RuntimeError(f"Access to potentially dangerous attribute '{obj.__module__}.{obj.__name__}.{name}' is blocked.")
-
+        
     return getattr(obj, name, *args)
 
 restricted_getattr.__module__ = 'builtins'
@@ -297,6 +297,8 @@ def torch_wrapper(*args, **kwargs):
     """
     # Use the globally saved original torch.load reference from the top of the file
     # Check if weights_only was explicitly passed by the caller
+    # Explicitly declare modification of global scope is intended
+    global _MODEL_WHITELIST
     weights_only_explicit = kwargs.get('weights_only', None) # Read value without popping yet
 
     # Try to get the filename being loaded (usually the first arg if it's a path)
@@ -351,19 +353,51 @@ def torch_wrapper(*args, **kwargs):
                     return orig_torch_load(*args, **retry_kwargs)
 
                 else:
-                    # --- Blocked: Not Whitelisted ---
+                    # --- File not in current whitelist, try reloading ---
+                    logging.warning(f"[Impact Pack/Subpack] File '{filename}' not found in current whitelist cache.")
+                    whitelist_path_msg = WHITELIST_FILE_PATH if WHITELIST_FILE_PATH else "[Path not determined]"
+                    logging.info(f"[Impact Pack/Subpack] Attempting to reload whitelist from: {whitelist_path_msg}")
+                    try:
+                        # Reload the whitelist from the file
+                        _MODEL_WHITELIST = load_whitelist(WHITELIST_FILE_PATH)
+                        logging.info(f"[Impact Pack/Subpack] Whitelist reloaded. Now contains {len(_MODEL_WHITELIST)} entries.")
+
+                        # --- Re-check Whitelist After Reload ---
+                        if filename and filename in _MODEL_WHITELIST:
+                            logging.warning("##############################################################################")
+                            logging.warning(f"[Impact Pack/Subpack] SUCCESS: File '{filename}' FOUND in reloaded whitelist.")
+                            logging.warning(f" >> Proceeding with whitelisted unsafe load (weights_only=False).")
+                            logging.warning(f" >> Ensure you recently added this file to: {whitelist_path_msg}")
+                            logging.warning(" >> SECURITY RISK: Ensure you trust its source.")
+                            logging.warning("##############################################################################")
+                            retry_kwargs = kwargs.copy()
+                            retry_kwargs['weights_only'] = False
+                            return orig_torch_load(*args, **retry_kwargs)
+                        else:
+                             # File still not found after reload, proceed with blocking
+                             logging.error("[Impact Pack/Subpack] File still not found in whitelist after reload.")
+                             # Fall through to the original blocking logic below
+
+                    except Exception as reload_e:
+                        logging.error(f"[Impact Pack/Subpack] Error occurred during whitelist reload attempt: {reload_e}", exc_info=True)
+                        # Fall through to the original blocking logic below if reload fails
+
+                    # --- Blocked: Not Whitelisted (Original Logic - runs if reload failed or file still not found) ---
                     logging.error("##############################################################################")
                     logging.error(f"[Impact Pack/Subpack] ERROR: Safe load failed for '{filename_arg_source}' (Reason: {e}).")
                     logging.error(f" >> This model likely uses legacy Python features blocked by default for security.")
-                    logging.error(f" >> UNSAFE LOAD BLOCKED because the file ('{filename or 'unknown'}') is NOT in the whitelist.")
-                    logging.error(f" >> Whitelist path: {WHITELIST_FILE_PATH}")
-                    logging.error(f" >> To allow loading this specific file (IF YOU TRUST IT), add its base name")
-                    logging.error(f" >> ('{filename}') to the whitelist file, one name per line.")
+                    # Updated log message here:
+                    logging.error(f" >> UNSAFE LOAD BLOCKED because the file ('{filename or 'unknown'}') is NOT in the whitelist (even after reload attempt).")
+                    logging.error(f" >> Whitelist path: {whitelist_path_msg}")
+                    if filename:
+                         logging.error(f" >> To allow loading this specific file (IF YOU TRUST IT), ensure its base name")
+                         logging.error(f" >> ('{filename}') is correctly added to the whitelist file (one name per line) and saved.")
+                    else:
+                         logging.error(f" >> Cannot determine filename to check against whitelist.")
                     logging.error(" >> SECURITY RISK: Only whitelist files from sources you absolutely trust.")
                     logging.error(" >> Prefer using .safetensors files whenever available.")
                     logging.error("##############################################################################")
-                    # Re-raise the original security-related error because it's not whitelisted
-                    raise e
+                    raise e # Re-raise the original security-related error
 
             else:
                 # If it's a different UnpicklingError, re-raise it. Don't attempt unsafe load.
