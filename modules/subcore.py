@@ -21,79 +21,94 @@ SEG = namedtuple("SEG",
                  defaults=[None])
 
 # --- Whitelist Configuration ---
-# Determine the base directory for ComfyUI
+# Try to import the official ComfyUI path helper
 try:
-    # Start from the directory of the current file (subcore.py)
-    module_path = os.path.dirname(inspect.getfile(lambda: None))
-    # Navigate up from the current module's directory to find ComfyUI base
-    current_path = module_path
-    comfyui_base_path = None
-    max_levels_up = 5 # Safety limit search depth
-    for _ in range(max_levels_up):
-        # Look for characteristic files/folders of the ComfyUI base
-        # Adjust these checks if your ComfyUI layout is non-standard
-        if os.path.exists(os.path.join(current_path, 'main.py')) and \
-           os.path.exists(os.path.join(current_path, 'web')) and \
-           os.path.exists(os.path.join(current_path, 'custom_nodes')):
-           comfyui_base_path = current_path
-           logging.info(f"[Impact Pack/Subpack] Found ComfyUI base path: {comfyui_base_path}")
-           break
-        parent_path = os.path.dirname(current_path)
-        if parent_path == current_path: # Reached filesystem root
-            logging.warning(f"[Impact Pack/Subpack] Reached filesystem root without finding ComfyUI base path.")
-            break
-        current_path = parent_path
+    import folder_paths
+    logging.info("[Impact Pack/Subpack] Successfully imported folder_paths.")
+    folder_paths_available = True
+except ImportError:
+    logging.warning("[Impact Pack/Subpack] Could not import folder_paths. Will attempt fallback methods for path detection.")
+    folder_paths_available = False
+except Exception as e:
+    logging.warning(f"[Impact Pack/Subpack] Error importing folder_paths: {e}. Will attempt fallback methods.")
+    folder_paths_available = False
 
-    if comfyui_base_path:
-        # Define the target directory and file path within user/default
-        WHITELIST_DIR = os.path.join(comfyui_base_path, "user", "default", "ComfyUI-Impact-Pack")
-        WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
-        logging.info(f"[Impact Pack/Subpack] Determined whitelist path: {WHITELIST_FILE_PATH}")
-    else:
-        # Fallback strategy if base path detection fails
-        logging.error("[Impact Pack/Subpack] Failed to automatically determine ComfyUI base path.")
-        # Attempt to use a path relative to potential base if stopped early
-        if current_path and os.path.exists(os.path.join(current_path, 'main.py')): # Simple check if we stopped at base
-             comfyui_base_path = current_path # Assume current_path is base
-             WHITELIST_DIR = os.path.join(comfyui_base_path, "user", "default", "ComfyUI-Impact-Pack")
+# --- Whitelist Configuration ---
+WHITELIST_DIR = None
+WHITELIST_FILE_PATH = None
+
+try:
+    # --- Attempt 1: Use ComfyUI's folder_paths (Preferred Method) ---
+    if folder_paths_available:
+        user_dir = folder_paths.get_user_directory()
+        if user_dir and os.path.isdir(user_dir):
+             WHITELIST_DIR = os.path.join(user_dir, "default", "ComfyUI-Impact-Pack")
              WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
-             logging.warning(f"[Impact Pack/Subpack] Using assumed base path for whitelist: {WHITELIST_FILE_PATH}")
+             logging.info(f"[Impact Pack/Subpack] Using folder_paths to determine whitelist path: {WHITELIST_FILE_PATH}")
         else:
-             # Last resort: place near the module code (warn user it might be lost)
-             WHITELIST_DIR = os.path.join(os.path.dirname(inspect.getfile(lambda: None)), ".impact_config") # Hidden dir
+             logging.warning(f"[Impact Pack/Subpack] folder_paths.get_user_directory() returned invalid path: {user_dir}. Proceeding to fallback.")
+             # Don't set paths here, let it proceed to fallback
+
+    # --- Attempt 2: Fallback to searching from module path ---
+    if WHITELIST_FILE_PATH is None: # Only run fallback if folder_paths didn't succeed or wasn't available
+        logging.info("[Impact Pack/Subpack] Attempting fallback method: searching from module path...")
+        # Start from the directory of the current file
+        module_path = os.path.dirname(inspect.getfile(lambda: None))
+        current_path = module_path
+        comfyui_base_path = None
+        max_levels_up = 5 # Safety limit search depth
+        for _ in range(max_levels_up):
+            # Look for characteristic files/folders of the ComfyUI base
+            if os.path.exists(os.path.join(current_path, 'main.py')) and \
+               os.path.exists(os.path.join(current_path, 'web')) and \
+               os.path.exists(os.path.join(current_path, 'custom_nodes')):
+               comfyui_base_path = current_path
+               logging.info(f"[Impact Pack/Subpack][Fallback] Found ComfyUI base path: {comfyui_base_path}")
+               break
+            parent_path = os.path.dirname(current_path)
+            if parent_path == current_path: # Reached filesystem root
+                logging.warning(f"[Impact Pack/Subpack][Fallback] Reached filesystem root without finding ComfyUI base path.")
+                break
+            current_path = parent_path
+
+        if comfyui_base_path:
+            # Define the target directory and file path within user/default
+            WHITELIST_DIR = os.path.join(comfyui_base_path, "user", "default", "ComfyUI-Impact-Pack")
+            WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
+            logging.info(f"[Impact Pack/Subpack][Fallback] Determined whitelist path via search: {WHITELIST_FILE_PATH}")
+        else:
+             # --- Attempt 3: Last Resort Fallback (if search also failed) ---
+             logging.error("[Impact Pack/Subpack][Fallback] Failed to automatically determine ComfyUI base path via search.")
+             # Place near the module code (warn user it might be lost)
+             fallback_dir = os.path.join(os.path.dirname(inspect.getfile(lambda: None)), ".impact_config") # Hidden dir relative to module
+             WHITELIST_DIR = fallback_dir # Use the fallback dir
              WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
-             logging.error(f"[Impact Pack/Subpack] Using fallback whitelist location (may be lost on update): {WHITELIST_FILE_PATH}")
+             logging.error(f"[Impact Pack/Subpack] Using last resort whitelist location (may be lost on update): {WHITELIST_FILE_PATH}")
 
 
-    # --- Ensure directory exists ---
-    # Check if WHITELIST_FILE_PATH was successfully determined before trying to create dirs
-    if 'WHITELIST_FILE_PATH' in locals() and WHITELIST_FILE_PATH:
+    # --- Ensure directory exists (runs regardless of which method succeeded) ---
+    if WHITELIST_FILE_PATH: # Check if any method succeeded in setting the path
         try:
             # Crucially, create the DIRECTORY first
+            # Use the WHITELIST_DIR determined by one of the methods above
             os.makedirs(WHITELIST_DIR, exist_ok=True)
             logging.info(f"[Impact Pack/Subpack] Ensured whitelist directory exists: {WHITELIST_DIR}")
         except OSError as e:
             logging.error(f"[Impact Pack/Subpack] Failed to create whitelist directory {WHITELIST_DIR}: {e}. Whitelisting may not function.")
             WHITELIST_FILE_PATH = None # Indicate failure / disable whitelisting
-        except NameError:
-             logging.error(f"[Impact Pack/Subpack] WHITELIST_DIR not defined, cannot create directory. Whitelisting disabled.")
-             WHITELIST_FILE_PATH = None # Indicate failure / disable whitelisting
         except Exception as e:
             logging.error(f"[Impact Pack/Subpack] Unexpected error creating whitelist directory: {e}", exc_info=True)
             WHITELIST_FILE_PATH = None # Indicate failure / disable whitelisting
     else:
-         # Handle case where path determination failed earlier
-         logging.error("[Impact Pack/Subpack] Whitelist path determination failed. Whitelisting disabled.")
-         # Explicitly set to None if it wasn't defined or set to None already
-         if 'WHITELIST_FILE_PATH' not in locals():
-              WHITELIST_FILE_PATH = None
+         # Handle case where path determination failed via all methods
+         logging.error("[Impact Pack/Subpack] Whitelist path determination failed using all methods. Whitelisting disabled.")
+         # WHITELIST_FILE_PATH is already None
 
 
 except Exception as e:
-    # Catch errors during the whole setup process
+    # Catch errors during the whole setup process (e.g., inspect failing)
     logging.error(f"[Impact Pack/Subpack] Critical error during whitelist path setup: {e}", exc_info=True)
-    # Define a fallback path as absolute last resort, but log error
-    WHITELIST_FILE_PATH = None # Disable whitelisting on critical setup failure
+    WHITELIST_FILE_PATH = None # Disable whitelisting on critical setup error
     logging.error("[Impact Pack/Subpack] Whitelisting disabled due to critical setup error.")
 
 
