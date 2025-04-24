@@ -133,7 +133,7 @@ def crop_ndarray2(npimg, crop_region):
 
     return cropped
 
-    
+
 def crop_ndarray4(npimg, crop_region):
     x1 = crop_region[0]
     y1 = crop_region[1]

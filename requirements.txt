@@ -1,5 +1,5 @@
 matplotlib
-ultralytics==8.3.40
+ultralytics
 numpy==1.26.4
 opencv-python-headless
 dill

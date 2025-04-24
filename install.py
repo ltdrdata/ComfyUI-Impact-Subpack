@@ -1,21 +1,22 @@
 import os
 import sys
 from torchvision.datasets.utils import download_url
+import logging
 
 subpack_path = os.path.join(os.path.dirname(__file__))
 
 comfy_path = os.environ.get('COMFYUI_PATH')
 if comfy_path is None:
     comfy_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    print(f"\nWARN: The `COMFYUI_PATH` environment variable is not set. Assuming `{comfy_path}` as the ComfyUI path.", file=sys.stderr)
-    
+    logging.warning(f"\nWARN: The `COMFYUI_PATH` environment variable is not set. Assuming `{comfy_path}` as the ComfyUI path.")
+
 sys.path.append(comfy_path)
 
 model_path = os.environ.get('COMFYUI_MODEL_PATH')
 if model_path is None:
     model_path = os.path.abspath(os.path.join(comfy_path, 'models'))
-    print(f"\nWARN: The `COMFYUI_MODEL_PATH` environment variable is not set. Assuming `{model_path}` as the ComfyUI path.", file=sys.stderr)
-    
+    logging.warning(f"\nWARN: The `COMFYUI_MODEL_PATH` environment variable is not set. Assuming `{model_path}` as the ComfyUI path.")
+
 
 ultralytics_bbox_path = os.path.join(model_path, "ultralytics", "bbox")
 ultralytics_segm_path = os.path.join(model_path, "ultralytics", "segm")

@@ -190,7 +190,7 @@ def restricted_getattr(obj, name, *args):
     if name != "forward":
         logging.error(f"Access to potentially dangerous attribute '{obj.__module__}.{obj.__name__}.{name}' is blocked.\nIf you believe the use of this code is genuinely safe, please report it.\nhttps://github.com/ltdrdata/ComfyUI-Impact-Subpack/issues")
         raise RuntimeError(f"Access to potentially dangerous attribute '{obj.__module__}.{obj.__name__}.{name}' is blocked.")
-        
+
     return getattr(obj, name, *args)
 
 restricted_getattr.__module__ = 'builtins'
