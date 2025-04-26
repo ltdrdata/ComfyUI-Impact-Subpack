@@ -10,7 +10,7 @@ import logging
 import os
 
 import pickle
-
+import folder_paths
 
 
 orig_torch_load = torch.load
@@ -20,73 +20,22 @@ SEG = namedtuple("SEG",
                  ['cropped_image', 'cropped_mask', 'confidence', 'crop_region', 'bbox', 'label', 'control_net_wrapper'],
                  defaults=[None])
 
-# --- Whitelist Configuration ---
-# Try to import the official ComfyUI path helper
-try:
-    import folder_paths
-    logging.info("[Impact Pack/Subpack] Successfully imported folder_paths.")
-    folder_paths_available = True
-except ImportError:
-    logging.warning("[Impact Pack/Subpack] Could not import folder_paths. Will attempt fallback methods for path detection.")
-    folder_paths_available = False
-except Exception as e:
-    logging.warning(f"[Impact Pack/Subpack] Error importing folder_paths: {e}. Will attempt fallback methods.")
-    folder_paths_available = False
 
 # --- Whitelist Configuration ---
 WHITELIST_DIR = None
 WHITELIST_FILE_PATH = None
 
 try:
-    # --- Attempt 1: Use ComfyUI's folder_paths (Preferred Method) ---
-    if folder_paths_available:
-        user_dir = folder_paths.get_user_directory()
-        if user_dir and os.path.isdir(user_dir):
-             WHITELIST_DIR = os.path.join(user_dir, "default", "ComfyUI-Impact-Pack")
-             WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
-             logging.info(f"[Impact Pack/Subpack] Using folder_paths to determine whitelist path: {WHITELIST_FILE_PATH}")
-        else:
-             logging.warning(f"[Impact Pack/Subpack] folder_paths.get_user_directory() returned invalid path: {user_dir}. Proceeding to fallback.")
-             # Don't set paths here, let it proceed to fallback
+    # --- Attempting: Use ComfyUI's folder_paths (Preferred Method) ---
+    user_dir = folder_paths.get_user_directory()
+    if user_dir and os.path.isdir(user_dir):
+        WHITELIST_DIR = os.path.join(user_dir, "default", "ComfyUI-Impact-Pack")
+        WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
+        logging.info(f"[Impact Pack/Subpack] Using folder_paths to determine whitelist path: {WHITELIST_FILE_PATH}")
+    else:
+        logging.warning(f"[Impact Pack/Subpack] folder_paths.get_user_directory() returned invalid path: {user_dir}.")
 
-    # --- Attempt 2: Fallback to searching from module path ---
-    if WHITELIST_FILE_PATH is None: # Only run fallback if folder_paths didn't succeed or wasn't available
-        logging.info("[Impact Pack/Subpack] Attempting fallback method: searching from module path...")
-        # Start from the directory of the current file
-        module_path = os.path.dirname(inspect.getfile(lambda: None))
-        current_path = module_path
-        comfyui_base_path = None
-        max_levels_up = 5 # Safety limit search depth
-        for _ in range(max_levels_up):
-            # Look for characteristic files/folders of the ComfyUI base
-            if os.path.exists(os.path.join(current_path, 'main.py')) and \
-               os.path.exists(os.path.join(current_path, 'web')) and \
-               os.path.exists(os.path.join(current_path, 'custom_nodes')):
-               comfyui_base_path = current_path
-               logging.info(f"[Impact Pack/Subpack][Fallback] Found ComfyUI base path: {comfyui_base_path}")
-               break
-            parent_path = os.path.dirname(current_path)
-            if parent_path == current_path: # Reached filesystem root
-                logging.warning(f"[Impact Pack/Subpack][Fallback] Reached filesystem root without finding ComfyUI base path.")
-                break
-            current_path = parent_path
-
-        if comfyui_base_path:
-            # Define the target directory and file path within user/default
-            WHITELIST_DIR = os.path.join(comfyui_base_path, "user", "default", "ComfyUI-Impact-Pack")
-            WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
-            logging.info(f"[Impact Pack/Subpack][Fallback] Determined whitelist path via search: {WHITELIST_FILE_PATH}")
-        else:
-             # --- Attempt 3: Last Resort Fallback (if search also failed) ---
-             logging.error("[Impact Pack/Subpack][Fallback] Failed to automatically determine ComfyUI base path via search.")
-             # Place near the module code (warn user it might be lost)
-             fallback_dir = os.path.join(os.path.dirname(inspect.getfile(lambda: None)), ".impact_config") # Hidden dir relative to module
-             WHITELIST_DIR = fallback_dir # Use the fallback dir
-             WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
-             logging.error(f"[Impact Pack/Subpack] Using last resort whitelist location (may be lost on update): {WHITELIST_FILE_PATH}")
-
-
-    # --- Ensure directory exists (runs regardless of which method succeeded) ---
+    # --- Ensure directory exists---
     if WHITELIST_FILE_PATH: # Check if any method succeeded in setting the path
         try:
             # Crucially, create the DIRECTORY first
@@ -346,7 +295,6 @@ def torch_wrapper(*args, **kwargs):
                     logging.warning(" >> Prefer using .safetensors files whenever available.")
                     logging.warning("##############################################################################")
 
-                    # Modify kwargs ONLY for the retry
                     retry_kwargs = kwargs.copy()
                     retry_kwargs['weights_only'] = False
                     # Call the original function again, now unsafely (because whitelisted)
