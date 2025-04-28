@@ -24,7 +24,7 @@ This node pack provides nodes that complement the [ComfyUI Impact Pack](https://
 
 ## Model loading configuration related to `weights_only`
 * Loading model files can involve executing code, so if malicious code is embedded in a model, it can pose a security risk. For this reason, PyTorch 2.6 and later have introduced features for safer model loading. The issue is that older model files, which were created without such safe loading (weights_only) restrictions, may occasionally fail to load properly.
-* By listing the paths of models deemed safe in `<user_directory>/default/ComfyUI-Impact-Pack/model-whitelist.txt`, those specific models will have weights_only disabled, allowing them to be loaded without restriction.
+* By listing the paths of models deemed safe in `<user_directory>/default/ComfyUI-Impact-Subpack/model-whitelist.txt`, those specific models will have weights_only disabled, allowing them to be loaded without restriction.
     * `<user_directory>`: typically located at ComfyUI/user.
 
 

@@ -29,7 +29,7 @@ try:
     # --- Attempting: Use ComfyUI's folder_paths (Preferred Method) ---
     user_dir = folder_paths.get_user_directory()
     if user_dir and os.path.isdir(user_dir):
-        WHITELIST_DIR = os.path.join(user_dir, "default", "ComfyUI-Impact-Pack")
+        WHITELIST_DIR = os.path.join(user_dir, "default", "ComfyUI-Impact-Subpack")
         WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
         logging.info(f"[Impact Pack/Subpack] Using folder_paths to determine whitelist path: {WHITELIST_FILE_PATH}")
     else:
