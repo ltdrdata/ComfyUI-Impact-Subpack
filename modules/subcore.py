@@ -7,6 +7,10 @@ from collections import namedtuple
 from . import utils
 import inspect
 import logging
+import os
+
+import pickle
+import folder_paths
 
 
 orig_torch_load = torch.load
@@ -16,6 +20,99 @@ SEG = namedtuple("SEG",
                  ['cropped_image', 'cropped_mask', 'confidence', 'crop_region', 'bbox', 'label', 'control_net_wrapper'],
                  defaults=[None])
 
+
+# --- Whitelist Configuration ---
+WHITELIST_DIR = None
+WHITELIST_FILE_PATH = None
+
+try:
+    # --- Attempting: Use ComfyUI's folder_paths (Preferred Method) ---
+    user_dir = folder_paths.get_user_directory()
+    if user_dir and os.path.isdir(user_dir):
+        WHITELIST_DIR = os.path.join(user_dir, "default", "ComfyUI-Impact-Pack")
+        WHITELIST_FILE_PATH = os.path.join(WHITELIST_DIR, "model-whitelist.txt")
+        logging.info(f"[Impact Pack/Subpack] Using folder_paths to determine whitelist path: {WHITELIST_FILE_PATH}")
+    else:
+        logging.warning(f"[Impact Pack/Subpack] folder_paths.get_user_directory() returned invalid path: {user_dir}.")
+
+    # --- Ensure directory exists---
+    if WHITELIST_FILE_PATH: # Check if any method succeeded in setting the path
+        try:
+            # Crucially, create the DIRECTORY first
+            # Use the WHITELIST_DIR determined by one of the methods above
+            os.makedirs(WHITELIST_DIR, exist_ok=True)
+            logging.info(f"[Impact Pack/Subpack] Ensured whitelist directory exists: {WHITELIST_DIR}")
+        except OSError as e:
+            logging.error(f"[Impact Pack/Subpack] Failed to create whitelist directory {WHITELIST_DIR}: {e}. Whitelisting may not function.")
+            WHITELIST_FILE_PATH = None # Indicate failure / disable whitelisting
+        except Exception as e:
+            logging.error(f"[Impact Pack/Subpack] Unexpected error creating whitelist directory: {e}", exc_info=True)
+            WHITELIST_FILE_PATH = None # Indicate failure / disable whitelisting
+    else:
+         # Handle case where path determination failed via all methods
+         logging.error("[Impact Pack/Subpack] Whitelist path determination failed using all methods. Whitelisting disabled.")
+         # WHITELIST_FILE_PATH is already None
+
+
+except Exception as e:
+    # Catch errors during the whole setup process (e.g., inspect failing)
+    logging.error(f"[Impact Pack/Subpack] Critical error during whitelist path setup: {e}", exc_info=True)
+    WHITELIST_FILE_PATH = None # Disable whitelisting on critical setup error
+    logging.error("[Impact Pack/Subpack] Whitelisting disabled due to critical setup error.")
+
+
+def load_whitelist(filepath):
+    """
+    Loads filenames from the whitelist file.
+    Attempts to create the file with instructions if it doesn't exist.
+    Returns a set of approved base filenames.
+    """
+    approved_files = set()
+    # Check again if filepath is valid before proceeding
+    if filepath is None or not isinstance(filepath, str):
+        # Log was already done if None during setup, avoid duplicate messages
+        # logging.error("[Impact Pack/Subpack] Whitelist file path is invalid. Whitelisting disabled.")
+        return approved_files # Return empty set
+
+    try:
+        # Try reading the existing file
+        with open(filepath, 'r') as f:
+            for line in f:
+                line = line.strip()
+                # Store only the base filename for easier matching
+                if line and not line.startswith('#'):
+                    approved_files.add(os.path.basename(line))
+        logging.info(f"[Impact Pack/Subpack] Loaded {len(approved_files)} model(s) from whitelist: {filepath}")
+
+    except FileNotFoundError:
+        # This block now runs only if the directory was created successfully but the file is missing
+        logging.warning(f"[Impact Pack/Subpack] Model whitelist file not found at: {filepath}. ")
+        logging.warning(f" >> An empty whitelist file will be created.")
+        logging.warning(f" >> To allow unsafe loading for specific trusted legacy models (e.g., older .pt),")
+        logging.warning(f" >> add their base filenames (one per line) to this file.")
+        try:
+            # Attempt to create the file with comments since it wasn't found
+            # This should now succeed because os.makedirs created the directory
+            with open(filepath, 'w') as f:
+                f.write("# Add base filenames of trusted models (e.g., my_old_yolo.pt) here, one per line.\n")
+                f.write("# This allows loading them with `weights_only=False` if they fail safe loading\n")
+                f.write("# due to errors like 'restricted getattr' in newer PyTorch versions.\n")
+                f.write("# WARNING: Only add files you absolutely trust, as this bypasses a security feature.\n")
+                f.write("# Prefer using .safetensors files whenever possible.\n")
+            logging.info(f"[Impact Pack/Subpack] Created empty whitelist file: {filepath}")
+        except Exception as create_e:
+             # Log error if creating the file fails even after creating the directory
+             logging.error(f"[Impact Pack/Subpack] Failed to create empty whitelist file at {filepath}: {create_e}", exc_info=True)
+
+    except Exception as e:
+        logging.error(f"[Impact Pack/Subpack] Error loading model whitelist from {filepath}: {e}", exc_info=True)
+
+    return approved_files
+
+# Now call the function using the dynamically determined (or None) path
+_MODEL_WHITELIST = load_whitelist(WHITELIST_FILE_PATH)
+
+# ---------- End of Whitelist Management ----------
 
 class NO_BBOX_DETECTOR:
     pass
@@ -42,7 +139,7 @@ def restricted_getattr(obj, name, *args):
     if name != "forward":
         logging.error(f"Access to potentially dangerous attribute '{obj.__module__}.{obj.__name__}.{name}' is blocked.\nIf you believe the use of this code is genuinely safe, please report it.\nhttps://github.com/ltdrdata/ComfyUI-Impact-Subpack/issues")
         raise RuntimeError(f"Access to potentially dangerous attribute '{obj.__module__}.{obj.__name__}.{name}' is blocked.")
-
+        
     return getattr(obj, name, *args)
 
 restricted_getattr.__module__ = 'builtins'
@@ -136,26 +233,141 @@ except Exception as e:
 
 # HOTFIX: https://github.com/ltdrdata/ComfyUI-Impact-Pack/issues/754
 # importing YOLO breaking original torch.load capabilities
+
+# --- Start: REPLACE the existing torch_wrapper function ---
+
 def torch_wrapper(*args, **kwargs):
-    # NOTE: A trick to support code based on `'weights_only' in torch.load.__code__.co_varnames`.
-    if 'weights_only' in kwargs:
-        weights_only = kwargs.pop('weights_only')
-    else:
-        weights_only = None
+    """
+    Wrapper for torch.load that attempts safe loading (weights_only=True) first.
+    If a specific UnpicklingError related to disallowed globals (like 'getattr')
+    occurs, it checks a user-defined whitelist (_MODEL_WHITELIST). If the file
+    is whitelisted, it retries with weights_only=False. Otherwise, it blocks
+    the unsafe load and raises the error.
+    """
+    # Use the globally saved original torch.load reference from the top of the file
+    # Check if weights_only was explicitly passed by the caller
+    # Explicitly declare modification of global scope is intended
+    global _MODEL_WHITELIST
+    weights_only_explicit = kwargs.get('weights_only', None) # Read value without popping yet
 
+    # Try to get the filename being loaded (usually the first arg if it's a path)
+    filename = None
+    filename_arg_source = "[unknown source]"
+    if args and isinstance(args[0], str):
+        filename = os.path.basename(args[0]) # Get just the filename part
+        filename_arg_source = args[0]
+    elif 'f' in kwargs and isinstance(kwargs['f'], str):
+        filename = os.path.basename(kwargs['f']) # Get just the filename part
+        filename_arg_source = kwargs['f']
+    # Note: filename might remain None if loading from a file-like object
+
+    # Check if using newer PyTorch with safe_globals attribute (indicates >= 2.6 behavior likely)
     if hasattr(torch.serialization, 'safe_globals'):
-        if weights_only is not None:
-            kwargs['weights_only'] = weights_only
 
-        return orig_torch_load(*args, **kwargs)  # NOTE: This code simply delegates the call to torch.load, and any errors that occur here are not the responsibility of Subpack.
+        # Determine the effective weights_only setting for the FIRST attempt
+        load_kwargs = kwargs.copy()
+        load_kwargs['weights_only'] = True # ALWAYS attempt safe load first on newer PyTorch
+
+        try:
+            # --- Attempt 1: Safe Load ---
+            # Try loading with the determined weights_only setting (usually True)
+            logging.debug(f"[Impact Pack/Subpack] Attempting safe load (weights_only=True) for: {filename_arg_source}")
+            return orig_torch_load(*args, **load_kwargs)
+
+        except pickle.UnpicklingError as e:
+            # --- Handle Specific Load Failure ---
+            # Check if the error is the specific one caused by disallowed globals
+            # like 'getattr' AND we were attempting a safe load (weights_only=True)
+            # Using 'getattr' because it was the specific error reported.
+            is_disallowed_global_error = 'getattr' in str(e)
+
+            if is_disallowed_global_error:
+                # Check the whitelist
+                if filename and filename in _MODEL_WHITELIST:
+                    # --- Fallback: Whitelisted Unsafe Load ---
+                    logging.warning("##############################################################################")
+                    logging.warning(f"[Impact Pack/Subpack] WARNING: Safe load failed for '{filename}' (Reason: {e}).")
+                    logging.warning(f" >> FILE IS IN THE WHITELIST: {WHITELIST_FILE_PATH}")
+                    logging.warning(" >> This model likely uses legacy Python features blocked by default for security.")
+                    logging.warning(" >> RETRYING WITH 'weights_only=False' because it's whitelisted.")
+                    logging.warning(" >> SECURITY RISK: Ensure you added this file to the whitelist consciously")
+                    logging.warning(f" >> and trust its source: {filename_arg_source}")
+                    logging.warning(" >> Prefer using .safetensors files whenever available.")
+                    logging.warning("##############################################################################")
+
+                    retry_kwargs = kwargs.copy()
+                    retry_kwargs['weights_only'] = False
+                    # Call the original function again, now unsafely (because whitelisted)
+                    return orig_torch_load(*args, **retry_kwargs)
+
+                else:
+                    # --- File not in current whitelist, try reloading ---
+                    logging.warning(f"[Impact Pack/Subpack] File '{filename}' not found in current whitelist cache.")
+                    whitelist_path_msg = WHITELIST_FILE_PATH if WHITELIST_FILE_PATH else "[Path not determined]"
+                    logging.info(f"[Impact Pack/Subpack] Attempting to reload whitelist from: {whitelist_path_msg}")
+                    try:
+                        # Reload the whitelist from the file
+                        _MODEL_WHITELIST = load_whitelist(WHITELIST_FILE_PATH)
+                        logging.info(f"[Impact Pack/Subpack] Whitelist reloaded. Now contains {len(_MODEL_WHITELIST)} entries.")
+
+                        # --- Re-check Whitelist After Reload ---
+                        if filename and filename in _MODEL_WHITELIST:
+                            logging.warning("##############################################################################")
+                            logging.warning(f"[Impact Pack/Subpack] SUCCESS: File '{filename}' FOUND in reloaded whitelist.")
+                            logging.warning(f" >> Proceeding with whitelisted unsafe load (weights_only=False).")
+                            logging.warning(f" >> Ensure you recently added this file to: {whitelist_path_msg}")
+                            logging.warning(" >> SECURITY RISK: Ensure you trust its source.")
+                            logging.warning("##############################################################################")
+                            retry_kwargs = kwargs.copy()
+                            retry_kwargs['weights_only'] = False
+                            return orig_torch_load(*args, **retry_kwargs)
+                        else:
+                             # File still not found after reload, proceed with blocking
+                             logging.error("[Impact Pack/Subpack] File still not found in whitelist after reload.")
+                             # Fall through to the original blocking logic below
+
+                    except Exception as reload_e:
+                        logging.error(f"[Impact Pack/Subpack] Error occurred during whitelist reload attempt: {reload_e}", exc_info=True)
+                        # Fall through to the original blocking logic below if reload fails
+
+                    # --- Blocked: Not Whitelisted (Original Logic - runs if reload failed or file still not found) ---
+                    logging.error("##############################################################################")
+                    logging.error(f"[Impact Pack/Subpack] ERROR: Safe load failed for '{filename_arg_source}' (Reason: {e}).")
+                    logging.error(f" >> This model likely uses legacy Python features blocked by default for security.")
+                    # Updated log message here:
+                    logging.error(f" >> UNSAFE LOAD BLOCKED because the file ('{filename or 'unknown'}') is NOT in the whitelist (even after reload attempt).")
+                    logging.error(f" >> Whitelist path: {whitelist_path_msg}")
+                    if filename:
+                         logging.error(f" >> To allow loading this specific file (IF YOU TRUST IT), ensure its base name")
+                         logging.error(f" >> ('{filename}') is correctly added to the whitelist file (one name per line) and saved.")
+                    else:
+                         logging.error(f" >> Cannot determine filename to check against whitelist.")
+                    logging.error(" >> SECURITY RISK: Only whitelist files from sources you absolutely trust.")
+                    logging.error(" >> Prefer using .safetensors files whenever available.")
+                    logging.error("##############################################################################")
+                    raise e # Re-raise the original security-related error
+
+            else:
+                # If it's a different UnpicklingError, re-raise it. Don't attempt unsafe load.
+                logging.error(f"[Impact Pack/Subpack] UnpicklingError during safe load (not 'getattr' related): {e}. Re-raising.")
+                raise e # Re-raise other UnpicklingErrors
+
     else:
-        if weights_only is not None:
-            kwargs['weights_only'] = weights_only
-        else:
-            logging.warning("[Impact Subpack] Your torch version is outdated, and security features cannot be applied properly.")
-            kwargs['weights_only'] = False
+        # --- Handle Older PyTorch Versions (no safe_globals) ---
+        # Behavior here respects the caller's explicit request or defaults to False
+        load_kwargs = kwargs.copy()
+        effective_weights_only = weights_only_explicit if weights_only_explicit is not None else False # Default False for old torch
+        load_kwargs['weights_only'] = effective_weights_only
 
-        return orig_torch_load(*args, **kwargs)
+        if not effective_weights_only:
+            logging.warning(f"[Impact Pack/Subpack] Older PyTorch version detected. Proceeding with potentially unsafe load (weights_only=False) for: {filename_arg_source}")
+        else:
+             logging.debug(f"[Impact Pack/Subpack] Older PyTorch version detected. Proceeding with explicit weights_only=True for: {filename_arg_source}")
+
+        # Call the original torch.load directly with the determined settings for older PyTorch
+        return orig_torch_load(*args, **load_kwargs)
+
+# --- End: Replacement block for the torch_wrapper function ---
 
 torch.load = torch_wrapper
 
