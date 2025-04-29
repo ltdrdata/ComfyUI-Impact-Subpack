@@ -266,10 +266,9 @@ def torch_wrapper(*args, **kwargs):
 
         # Determine the effective weights_only setting for the FIRST attempt
         load_kwargs = kwargs.copy()
-        load_kwargs['weights_only'] = True # ALWAYS attempt safe load first on newer PyTorch
 
         try:
-            # --- Attempt 1: Safe Load ---
+            # --- Attempt 1: Default Load ---
             # Try loading with the determined weights_only setting (usually True)
             logging.debug(f"[Impact Pack/Subpack] Attempting safe load (weights_only=True) for: {filename_arg_source}")
             return orig_torch_load(*args, **load_kwargs)
