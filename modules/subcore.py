@@ -85,15 +85,14 @@ def load_whitelist(filepath):
 
     except FileNotFoundError:
         logging.warning(f"[Impact Pack/Subpack] Model whitelist file not found at: {filepath}. ")
-        logging.warning(f" >> An empty whitelist file will be created.")
-        logging.warning(f" >> To allow unsafe loading for specific trusted legacy models (e.g., older .pt),")
-        logging.warning(f" >> add their base filenames (one per line) to this file.")
+        logging.warning(f" >> An empty whitelist file will be created with instructions.")
         try:
             with open(filepath, 'w') as f:
                 f.write("# Add base filenames of trusted models (e.g., my_old_yolo.pt) here, one per line.\n")
                 f.write("# This allows loading them with `weights_only=False` if they fail safe loading\n")
                 f.write("# due to errors like 'restricted getattr' in newer PyTorch versions.\n")
                 f.write("# WARNING: Only add files you absolutely trust, as this bypasses a security feature.\n")
+                f.write("# Files automatically added by the script due to safe load failures will also appear here.\n")
                 f.write("# Prefer using .safetensors files whenever possible.\n")
             logging.info(f"[Impact Pack/Subpack] Created empty whitelist file: {filepath}")
         except Exception as create_e:
@@ -103,6 +102,45 @@ def load_whitelist(filepath):
         logging.error(f"[Impact Pack/Subpack] Error loading model whitelist from {filepath}: {e}", exc_info=True)
 
     return approved_files
+
+def _add_to_whitelist_file_and_reload(filename_to_add, whitelist_filepath):
+    """
+    Adds a filename to the whitelist file and reloads the in-memory whitelist.
+    Returns the updated set of approved files.
+    """
+    global _MODEL_WHITELIST
+    if whitelist_filepath is None or not isinstance(whitelist_filepath, str) or filename_to_add is None:
+        logging.error("[Impact Pack/Subpack] Cannot add to whitelist: Invalid filepath or filename.")
+        return _MODEL_WHITELIST # Return current whitelist
+
+    try:
+        # Ensure the directory exists (it should by now, but double-check)
+        os.makedirs(os.path.dirname(whitelist_filepath), exist_ok=True)
+
+        # Check if file already contains the entry to avoid duplicates (optional but good practice)
+        current_entries = set()
+        try:
+            with open(whitelist_filepath, 'r') as f_read:
+                for line in f_read:
+                    current_entries.add(line.strip())
+        except FileNotFoundError:
+            pass # File will be created by load_whitelist or append mode
+
+        if os.path.basename(filename_to_add) not in current_entries:
+            with open(whitelist_filepath, 'a') as f_append: # Append mode
+                f_append.write(f"\n{os.path.basename(filename_to_add)}") # Add on a new line
+            logging.info(f"[Impact Pack/Subpack] Automatically added '{os.path.basename(filename_to_add)}' to whitelist file: {whitelist_filepath}")
+        else:
+            logging.info(f"[Impact Pack/Subpack] Filename '{os.path.basename(filename_to_add)}' already in whitelist file: {whitelist_filepath}")
+
+        # Reload the whitelist to update the in-memory set
+        _MODEL_WHITELIST = load_whitelist(whitelist_filepath)
+        return _MODEL_WHITELIST
+
+    except Exception as e:
+        logging.error(f"[Impact Pack/Subpack] Failed to automatically add '{filename_to_add}' to whitelist file {whitelist_filepath}: {e}", exc_info=True)
+        return _MODEL_WHITELIST # Return current (potentially unchanged) whitelist
+
 
 _MODEL_WHITELIST = load_whitelist(WHITELIST_FILE_PATH)
 # ---------- End of Whitelist Management ----------
@@ -118,7 +156,7 @@ def create_segmasks(results):
     segms = results[2]
     confidence = results[3]
 
-    output_results = [] # Renamed to avoid conflict with the outer scope 'results' name
+    output_results = []
     for i in range(len(segms)):
         item = (bboxs[i], segms[i].astype(np.float32), confidence[i])
         output_results.append(item)
@@ -134,7 +172,6 @@ def restricted_getattr(obj, name, *args):
 restricted_getattr.__module__ = 'builtins'
 restricted_getattr.__name__ = 'getattr'
 
-# Attempt to import ultralytics and related components
 try:
     from ultralytics import YOLO
     from ultralytics.nn.tasks import DetectionModel, SegmentationModel
@@ -149,7 +186,7 @@ try:
 
     try:
         from numpy import dtype
-        from numpy.dtypes import Float64DType # For numpy 1.24+
+        from numpy.dtypes import Float64DType
     except ImportError:
         logging.warning("[Impact Subpack] Could not import Float64DType from numpy.dtypes. This might affect loading models saved with newer numpy versions if you have an older numpy.")
         from numpy import dtype
@@ -161,7 +198,7 @@ try:
 
     def build_torch_whitelist():
         global torch_whitelist
-
+        # ... (build_torch_whitelist content remains the same as your last provided version) ...
         for name, obj in inspect.getmembers(modules):
             if inspect.isclass(obj) and obj.__module__.startswith("ultralytics.nn.modules"):
                 aliasObj = type(name, (obj,), {})
@@ -196,17 +233,15 @@ try:
         aliasYOLOv10DetectionModel = type("YOLOv10DetectionModel", (DetectionModel,), {})
         aliasYOLOv10DetectionModel.__module__ = "ultralytics.nn.tasks"
         aliasYOLOv10DetectionModel.__name__ = "YOLOv10DetectionModel"
-
-        # Assuming E2EDetectLoss exists in loss_modules
+        
         if hasattr(loss_modules, 'E2EDetectLoss'):
             aliasv10DetectLoss = type("v10DetectLoss", (loss_modules.E2EDetectLoss,), {})
             aliasv10DetectLoss.__name__ = "v10DetectLoss"
             aliasv10DetectLoss.__module__ = "ultralytics.utils.loss"
         else:
-            # Fallback if E2EDetectLoss is not found, to prevent error during build_torch_whitelist
             class DummyLoss: pass
-            aliasv10DetectLoss = type("v10DetectLoss", (DummyLoss,), {}) # Create a dummy type
-            logging.warning("[Impact Pack/Subpack] loss_modules.E2EDetectLoss not found. aliasv10DetectLoss created as a dummy type.")
+            aliasv10DetectLoss = type("v10DetectLoss", (DummyLoss,), {}) 
+            logging.warning("[Impact Pack/Subpack] loss_modules.E2EDetectLoss not found for aliasv10DetectLoss.")
 
 
         torch_whitelist += [
@@ -215,7 +250,6 @@ try:
             TaskAlignedAssigner, aliasTaskAlignedAssigner, aliasv10DetectLoss,
             restricted_getattr, dill._dill._load_type, scalar, dtype, Float64DType
         ]
-
     build_torch_whitelist()
 
 except ImportError as e:
@@ -224,14 +258,11 @@ except ImportError as e:
     YOLO = None
     class DetectionModel: pass
     class SegmentationModel: pass
-
 except Exception as e:
     logging.error(f"[Impact Pack/Subpack] General error during ultralytics setup: {e}", exc_info=True)
     logging.error("\n!!!!!\n\n[ComfyUI-Impact-Subpack] If this error occurs, please check the following link:\n\thttps://github.com/ltdrdata/ComfyUI-Impact-Pack/blob/Main/troubleshooting/TROUBLESHOOTING.md\n\n!!!!!\n")
     raise e
 
-
-# --- Start: REPLACE the existing torch_wrapper function ---
 def torch_wrapper(*args, **kwargs):
     global _MODEL_WHITELIST
 
@@ -253,73 +284,63 @@ def torch_wrapper(*args, **kwargs):
         try:
             return orig_torch_load(*args, **load_kwargs_attempt1)
 
-        except pickle.UnpicklingError as e: # Catch standard pickle.UnpicklingError
+        except pickle.UnpicklingError as e:
             is_disallowed_global_error = 'getattr' in str(e) or "Unsupported global" in str(e)
 
             if is_disallowed_global_error and effective_wo_attempt1:
+                # Check current whitelist (reloaded one if previously reloaded in this call)
                 if filename and filename in _MODEL_WHITELIST:
                     logging.warning("##############################################################################")
                     logging.warning(f"[Impact Pack/Subpack] WARNING: Safe load failed for '{filename}' (Reason: {e}).")
-                    logging.warning(f" >> FILE IS IN THE WHITELIST: {WHITELIST_FILE_PATH}")
+                    logging.warning(f" >> FILE IS ALREADY IN THE WHITELIST: {WHITELIST_FILE_PATH}")
                     logging.warning(" >> This model likely uses legacy Python features blocked by default for security.")
-                    logging.warning(" >> RETRYING WITH 'weights_only=False' because it's whitelisted.")
-                    logging.warning(" >> SECURITY RISK: Ensure you added this file to the whitelist consciously")
-                    logging.warning(f" >> and trust its source: {filename_arg_source}")
-                    logging.warning(" >> Prefer using .safetensors files whenever available.")
+                    logging.warning(" >> RETRYING WITH 'weights_only=False' as it's whitelisted.")
                     logging.warning("##############################################################################")
-
                     retry_kwargs = kwargs.copy()
                     retry_kwargs['weights_only'] = False
                     return orig_torch_load(*args, **retry_kwargs)
                 else:
-                    logging.warning(f"[Impact Pack/Subpack] File '{filename}' not found in current whitelist cache.")
-                    whitelist_path_msg = WHITELIST_FILE_PATH if WHITELIST_FILE_PATH else "[Path not determined]"
-                    logging.info(f"[Impact Pack/Subpack] Attempting to reload whitelist from: {whitelist_path_msg}")
-                    try:
-                        _MODEL_WHITELIST = load_whitelist(WHITELIST_FILE_PATH)
-                        logging.info(f"[Impact Pack/Subpack] Whitelist reloaded. Now contains {len(_MODEL_WHITELIST)} entries.")
+                    # File not in whitelist. AUTOMATICALLY ADD AND RETRY.
+                    logging.warning("##############################################################################")
+                    logging.warning(f"[Impact Pack/Subpack] CAUTION: Safe load failed for '{filename_arg_source}' (Reason: {e}).")
+                    logging.warning(f" >> File '{filename}' was NOT found in the whitelist: {WHITELIST_FILE_PATH}")
+                    logging.warning(f" >> AUTOMATICALLY ADDING '{filename}' TO WHITELIST and retrying with 'weights_only=False'.")
+                    logging.warning(" >> SECURITY IMPLICATION: This model will now be trusted for unsafe loading.")
+                    logging.warning(" >> If you did not intend this, remove it from the whitelist file and restart.")
+                    logging.warning(" >> Prefer using .safetensors files whenever available for better security.")
+                    logging.warning("##############################################################################")
 
-                        if filename and filename in _MODEL_WHITELIST:
-                            logging.warning("##############################################################################")
-                            logging.warning(f"[Impact Pack/Subpack] SUCCESS: File '{filename}' FOUND in reloaded whitelist.")
-                            logging.warning(f" >> Proceeding with whitelisted unsafe load (weights_only=False).")
-                            logging.warning(f" >> Ensure you recently added this file to: {whitelist_path_msg}")
-                            logging.warning(" >> SECURITY RISK: Ensure you trust its source.")
-                            logging.warning("##############################################################################")
+                    if filename and WHITELIST_FILE_PATH:
+                        _MODEL_WHITELIST = _add_to_whitelist_file_and_reload(filename, WHITELIST_FILE_PATH)
+                        # After adding and reloading, check again (it should be there now)
+                        if filename in _MODEL_WHITELIST:
+                            logging.info(f"[Impact Pack/Subpack] Successfully added '{filename}' to in-memory whitelist. Proceeding with unsafe load.")
                             retry_kwargs = kwargs.copy()
                             retry_kwargs['weights_only'] = False
                             return orig_torch_load(*args, **retry_kwargs)
                         else:
-                            logging.error("[Impact Pack/Subpack] File still not found in whitelist after reload.")
-                    except Exception as reload_e:
-                        logging.error(f"[Impact Pack/Subpack] Error occurred during whitelist reload attempt: {reload_e}", exc_info=True)
-
-                    logging.error("##############################################################################")
-                    logging.error(f"[Impact Pack/Subpack] ERROR: Safe load failed for '{filename_arg_source}' (Reason: {e}).")
-                    logging.error(f" >> This model likely uses legacy Python features blocked by default for security.")
-                    logging.error(f" >> UNSAFE LOAD BLOCKED because the file ('{filename or 'unknown'}') is NOT in the whitelist (even after reload attempt).")
-                    logging.error(f" >> Whitelist path: {whitelist_path_msg}")
-                    if filename:
-                        logging.error(f" >> To allow loading this specific file (IF YOU TRUST IT), ensure its base name")
-                        logging.error(f" >> ('{filename}') is correctly added to the whitelist file (one name per line) and saved.")
+                            logging.error(f"[Impact Pack/Subpack] Failed to verify '{filename}' in whitelist after automatic add attempt. Blocking load.")
+                            # Fall through to raise the original error if auto-add logic failed verification
                     else:
-                        logging.error(f" >> Cannot determine filename to check against whitelist.")
-                    logging.error(" >> SECURITY RISK: Only whitelist files from sources you absolutely trust.")
-                    logging.error(" >> Prefer using .safetensors files whenever available.")
+                        logging.error("[Impact Pack/Subpack] Cannot automatically add to whitelist: Filename or whitelist path is missing. Blocking load.")
+                    
+                    # If auto-add failed or filename/path was missing, raise original error
                     logging.error("##############################################################################")
-                    raise e
-            else:
+                    logging.error(f"[Impact Pack/Subpack] BLOCKED (after auto-add attempt failed or was not possible): Safe load failed for '{filename_arg_source}' (Reason: {e}).")
+                    logging.error(f" >> Whitelist path: {WHITELIST_FILE_PATH if WHITELIST_FILE_PATH else '[Path not determined]'}")
+                    logging.error("##############################################################################")
+                    raise e # Re-raise the original security-related error
+            else: # Not the specific error we handle for whitelisting, or first attempt was not safe
                 logging.error(f"[Impact Pack/Subpack] UnpicklingError during load for '{filename_arg_source}'. Error: {e}. "
                               f"First attempt 'weights_only' was {effective_wo_attempt1}. "
-                              "Not a whitelisting scenario or already tried unsafe. Re-raising.")
+                              "Not an auto-whitelisting scenario. Re-raising.")
                 raise e
-        except Exception as general_e:
+        except Exception as general_e: # Catch other errors like RuntimeError, etc.
             logging.error(f"[Impact Pack/Subpack] A general exception occurred during torch.load for {filename_arg_source}: {general_e}", exc_info=True)
             raise general_e
-    else:
+    else: # Older PyTorch (no safe_globals)
         load_kwargs_old_torch = kwargs.copy()
         effective_wo_old_torch = load_kwargs_old_torch.get('weights_only', False)
-
         if not effective_wo_old_torch:
             logging.warning(f"[Impact Pack/Subpack] Older PyTorch version detected. Proceeding with potentially unsafe load "
                             f"(effective weights_only=False) for: {filename_arg_source}")
@@ -329,18 +350,14 @@ def torch_wrapper(*args, **kwargs):
         return orig_torch_load(*args, **load_kwargs_old_torch)
 
 torch.load = torch_wrapper
-# --- End: Replacement block for the torch_wrapper function ---
-
 
 def load_yolo(model_path: str):
     if YOLO is None:
         logging.error("[Impact Pack/Subpack] YOLO class not available. Cannot load YOLO model.")
         raise RuntimeError("[Impact Pack/Subpack] YOLO could not be imported. Please check ultralytics installation.")
 
-    current_safe_globals = list(getattr(torch.serialization, 'get_safe_globals', lambda: [])()) # Handle if get_safe_globals doesn't exist
-
-    # Add types from torch_whitelist that are classes
-    for item in torch_whitelist: # torch_whitelist should be defined
+    current_safe_globals = list(getattr(torch.serialization, 'get_safe_globals', lambda: [])())
+    for item in torch_whitelist:
         if inspect.isclass(item) and item not in current_safe_globals:
             current_safe_globals.append(item)
 
@@ -350,15 +367,20 @@ def load_yolo(model_path: str):
                 return YOLO(model_path)
             except ModuleNotFoundError:
                 logging.warning("[Impact Pack/Subpack] ModuleNotFoundError during YOLO load, attempting fallback with yolov8n.pt")
-                YOLO("yolov8n.pt")
-                return YOLO(model_path)
-            except pickle.UnpicklingError as e: # MODIFIED: Changed from _pickle.UnpicklingError
-                logging.error(f"[Impact Pack/Subpack] UnpicklingError directly in YOLO constructor for {model_path}: {e}", exc_info=True)
-                logging.error(f" >> This could be due to the model structure itself, not just weights.")
-                logging.error(f" >> Ensure all necessary classes are in torch_whitelist and potentially safe_globals if this persists.")
+                YOLO("yolov8n.pt") # Attempt to initialize with a default model
+                return YOLO(model_path) # Retry loading the target model
+            except pickle.UnpicklingError as e:
+                # This catch is for UnpicklingErrors raised directly by YOLO() constructor,
+                # potentially not via the torch.load wrapper (e.g. if YOLO unpickles other config files)
+                # The torch.load of weights is handled by our torch_wrapper.
+                # If the error is the same "Weights only load failed..." it means it still went through torch.load
+                # which should have been handled by torch_wrapper. This path indicates either
+                # A) YOLO does its own unpickling apart from weights, or B) an unexpected error flow.
+                logging.error(f"[Impact Pack/Subpack] UnpicklingError in YOLO constructor for {model_path} (within safe_globals): {e}", exc_info=True)
+                logging.error(f" >> This error might indicate an issue with the model's pickled structure itself, beyond just weights, or an unhandled path for torch.load.")
                 raise e
-            except Exception as e_other: # Catch any other exceptions
-                logging.error(f"[Impact Pack/Subpack] Other exception in YOLO constructor for {model_path} within safe_globals context: {e_other}", exc_info=True)
+            except Exception as e_other:
+                logging.error(f"[Impact Pack/Subpack] Other exception in YOLO constructor for {model_path} (within safe_globals): {e_other}", exc_info=True)
                 raise e_other
     else: # Older PyTorch or safe_globals not available
         try:
@@ -367,13 +389,15 @@ def load_yolo(model_path: str):
             logging.warning("[Impact Pack/Subpack] ModuleNotFoundError during YOLO load (older PyTorch), attempting fallback with yolov8n.pt")
             YOLO("yolov8n.pt")
             return YOLO(model_path)
-        except pickle.UnpicklingError as e: # MODIFIED: Changed from _pickle.UnpicklingError
-            logging.error(f"[Impact Pack/Subpack] UnpicklingError directly in YOLO constructor for {model_path} (older PyTorch): {e}", exc_info=True)
+        except pickle.UnpicklingError as e:
+            logging.error(f"[Impact Pack/Subpack] UnpicklingError in YOLO constructor for {model_path} (older PyTorch): {e}", exc_info=True)
             raise e
-        except Exception as e_other: # Catch any other exceptions
+        except Exception as e_other:
             logging.error(f"[Impact Pack/Subpack] Other exception in YOLO constructor for {model_path} (older PyTorch): {e_other}", exc_info=True)
             raise e_other
 
+# --- inference_bbox, inference_segm, UltraBBoxDetector, UltraSegmDetector classes remain unchanged ---
+# (Assuming their last provided version was correct and complete)
 
 def inference_bbox(
     model,
@@ -383,12 +407,11 @@ def inference_bbox(
 ):
     pred = model(image, conf=confidence, device=device if device else None)
 
-    # Check if pred[0].boxes is None or empty before accessing attributes
     if not pred or not pred[0].boxes:
         return [[], [], [], []]
         
     bboxes = pred[0].boxes.xyxy.cpu().numpy()
-    if not bboxes.any(): # Check if bboxes numpy array is empty
+    if not bboxes.any(): 
         return [[], [], [], []]
 
     cv2_image = np.array(image.convert("RGB"))
@@ -408,11 +431,8 @@ def inference_bbox(
         output_results[0].append(pred[0].names[int(pred[0].boxes[i].cls.item())])
         output_results[1].append(bboxes[i])
         output_results[2].append(segms[i])
-        # Ensure conf is correctly accessed and converted
         conf_value = pred[0].boxes[i].conf
         output_results[3].append(conf_value.cpu().numpy() if hasattr(conf_value, 'cpu') else np.array([conf_value.item()]))
-
-
     return output_results
 
 
@@ -431,29 +451,26 @@ def inference_segm(
     if not bboxes.any():
         return [[], [], [], []]
 
+    h_orig, w_orig = image.size[1], image.size[0]
+    scaled_masks_np = []
+
     if pred[0].masks is None:
         logging.warning("[Impact Pack/Subpack] Segmentation model called, but no masks found in prediction.")
-        # Create empty boolean masks matching image size for each bounding box
-        h_orig, w_orig = image.size[1], image.size[0]
         scaled_masks_np = [np.zeros((h_orig, w_orig), dtype=bool) for _ in bboxes]
     else:
         segms_data = pred[0].masks.data.cpu().numpy()
-        h_orig, w_orig = image.size[1], image.size[0]
-        scaled_masks_np = []
-
-        if segms_data.ndim < 3 or segms_data.shape[0] == 0: # No masks to process
+        if segms_data.ndim < 3 or segms_data.shape[0] == 0:
              scaled_masks_np = [np.zeros((h_orig, w_orig), dtype=bool) for _ in bboxes]
         else:
             for i in range(segms_data.shape[0]):
                 mask_tensor = torch.from_numpy(segms_data[i])
-                # Direct resize, assuming masks are for the full image and need scaling
-                scaled_mask = torch.nn.functional.interpolate(
+                scaled_mask_tensor = torch.nn.functional.interpolate(
                     mask_tensor.unsqueeze(0).unsqueeze(0).float(),
                     size=(h_orig, w_orig),
                     mode='bilinear',
                     align_corners=False
                 )
-                scaled_mask = scaled_mask.squeeze().squeeze() > 0.5 # Threshold
+                scaled_mask = scaled_mask_tensor.squeeze().squeeze() > 0.5
                 scaled_masks_np.append(scaled_mask.numpy())
     
     output_results = [[], [], [], []]
@@ -463,59 +480,40 @@ def inference_segm(
         output_results[2].append(scaled_masks_np[i] if i < len(scaled_masks_np) else np.zeros((h_orig, w_orig), dtype=bool) )
         conf_value = pred[0].boxes[i].conf
         output_results[3].append(conf_value.cpu().numpy() if hasattr(conf_value, 'cpu') else np.array([conf_value.item()]))
-
     return output_results
 
 
 class UltraBBoxDetector:
     bbox_model = None
-
     def __init__(self, bbox_model):
         self.bbox_model = bbox_model
-
     def detect(self, image, threshold, dilation, crop_factor, drop_size=1, detailer_hook=None):
         drop_size = max(drop_size, 1)
         pil_image = utils.tensor2pil(image[0] if image.ndim == 4 and image.shape[0] == 1 else image)
         detected_results = inference_bbox(self.bbox_model, pil_image, threshold)
         segmasks = create_segmasks(detected_results)
-
         if dilation > 0:
             segmasks = utils.dilate_masks(segmasks, dilation)
-
         items = []
         img_h = image.shape[1 if image.ndim == 4 else 0]
         img_w = image.shape[2 if image.ndim == 4 else 1]
-
-
         for i, item_tuple in enumerate(segmasks):
-            item_bbox_coords = item_tuple[0]
-            item_mask_array = item_tuple[1]
-            confidence_val = item_tuple[2]
+            item_bbox_coords, item_mask_array, confidence_val = item_tuple
             label = detected_results[0][i]
-
-
             x1, y1, x2, y2 = item_bbox_coords
-
             if (x2 - x1) >= drop_size and (y2 - y1) >= drop_size:
                 crop_region_coords = utils.make_crop_region(img_w, img_h, item_bbox_coords, crop_factor)
-
                 if detailer_hook is not None and hasattr(detailer_hook, 'post_crop_region'):
                     crop_region_coords = detailer_hook.post_crop_region(img_w, img_h, item_bbox_coords, crop_region_coords)
-
                 cropped_image_tensor = utils.crop_image(image, crop_region_coords)
                 cropped_mask_array = utils.crop_ndarray2(item_mask_array, crop_region_coords)
-
                 item = SEG(cropped_image_tensor, cropped_mask_array, confidence_val, crop_region_coords, item_bbox_coords, label, None)
                 items.append(item)
-
         output_shape = (img_h, img_w)
         segs = output_shape, items
-
         if detailer_hook is not None and hasattr(detailer_hook, "post_detection"):
             segs = detailer_hook.post_detection(segs)
-
         return segs
-
     def detect_combined(self, image, threshold, dilation):
         pil_image = utils.tensor2pil(image[0] if image.ndim == 4 and image.shape[0] == 1 else image)
         detected_results = inference_bbox(self.bbox_model, pil_image, threshold)
@@ -523,59 +521,40 @@ class UltraBBoxDetector:
         if dilation > 0:
             segmasks = utils.dilate_masks(segmasks, dilation)
         return utils.combine_masks(segmasks)
-
     def setAux(self, x):
         pass
 
-
 class UltraSegmDetector:
     segm_model = None
-
     def __init__(self, segm_model):
         self.segm_model = segm_model
-
     def detect(self, image, threshold, dilation, crop_factor, drop_size=1, detailer_hook=None):
         drop_size = max(drop_size, 1)
         pil_image = utils.tensor2pil(image[0] if image.ndim == 4 and image.shape[0] == 1 else image)
         detected_results = inference_segm(self.segm_model, pil_image, threshold)
         segmasks = create_segmasks(detected_results)
-
         if dilation > 0:
             segmasks = utils.dilate_masks(segmasks, dilation)
-
         items = []
         img_h = image.shape[1 if image.ndim == 4 else 0]
         img_w = image.shape[2 if image.ndim == 4 else 1]
-
-
         for i, item_tuple in enumerate(segmasks):
-            item_bbox_coords = item_tuple[0]
-            item_mask_array = item_tuple[1]
-            confidence_val = item_tuple[2]
+            item_bbox_coords, item_mask_array, confidence_val = item_tuple
             label = detected_results[0][i]
-
             x1, y1, x2, y2 = item_bbox_coords
-
             if (x2 - x1) >= drop_size and (y2 - y1) >= drop_size:
                 crop_region_coords = utils.make_crop_region(img_w, img_h, item_bbox_coords, crop_factor)
-
                 if detailer_hook is not None and hasattr(detailer_hook, 'post_crop_region'):
                     crop_region_coords = detailer_hook.post_crop_region(img_w, img_h, item_bbox_coords, crop_region_coords)
-                
                 cropped_image_tensor = utils.crop_image(image, crop_region_coords)
                 cropped_mask_array = utils.crop_ndarray2(item_mask_array, crop_region_coords)
-                
                 item = SEG(cropped_image_tensor, cropped_mask_array, confidence_val, crop_region_coords, item_bbox_coords, label, None)
                 items.append(item)
-
         output_shape = (img_h, img_w)
         segs = output_shape, items
-
         if detailer_hook is not None and hasattr(detailer_hook, "post_detection"):
             segs = detailer_hook.post_detection(segs)
-
         return segs
-
     def detect_combined(self, image, threshold, dilation):
         pil_image = utils.tensor2pil(image[0] if image.ndim == 4 and image.shape[0] == 1 else image)
         detected_results = inference_segm(self.segm_model, pil_image, threshold)
@@ -583,6 +562,5 @@ class UltraSegmDetector:
         if dilation > 0:
             segmasks = utils.dilate_masks(segmasks, dilation)
         return utils.combine_masks(segmasks)
-
     def setAux(self, x):
         pass
