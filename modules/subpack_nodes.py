@@ -9,8 +9,8 @@ def update_model_paths(model_path):
     utils.add_folder_path_and_extensions("ultralytics_bbox", [os.path.join(model_path, "ultralytics", "bbox")], folder_paths.supported_pt_extensions)
     utils.add_folder_path_and_extensions("ultralytics_segm", [os.path.join(model_path, "ultralytics", "segm")], folder_paths.supported_pt_extensions)
     utils.add_folder_path_and_extensions("ultralytics", [os.path.join(model_path, "ultralytics")], folder_paths.supported_pt_extensions)
-    logging.info(f'[Impact Subpack] ultralytics_bbox: {os.path.join(model_path, "ultralytics", "bbox")}')
-    logging.info(f'[Impact Subpack] ultralytics_segm: {os.path.join(model_path, "ultralytics", "segm")}')
+    logging.info(f'[Impact Subpack] ultralytics_bbox: {", ".join(folder_paths.folder_names_and_paths["ultralytics_bbox"][0])}')
+    logging.info(f'[Impact Subpack] ultralytics_segm: {", ".join(folder_paths.folder_names_and_paths["ultralytics_segm"][0])}')
 
 update_model_paths(folder_paths.models_dir)
 if 'download_model_base' in folder_paths.folder_names_and_paths:
