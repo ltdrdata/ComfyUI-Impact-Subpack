@@ -36,7 +36,7 @@ class UltralyticsDetectorProvider:
                 model_path = folder_paths.get_full_path("ultralytics_bbox", model_name[5:])
             elif model_name.startswith('segm/'):
                 model_path = folder_paths.get_full_path("ultralytics_segm", model_name[5:])
-                
+
         if model_path is None:
             logging.error(f"[Impact Subpack] model file '{model_name}' is not found in one of the following directories:")
 
