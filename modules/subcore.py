@@ -312,10 +312,20 @@ def torch_wrapper(*args, **kwargs):
 
 torch.load = torch_wrapper
 
-
 def load_yolo(model_path: str):
-    return YOLO(model_path)
-    
+    try:
+        # Try the new PyTorch 2.6+ safe loading approach first
+        with torch.serialization.safe_globals([DetectionModel]):
+            return YOLO(model_path)
+    except (AttributeError, TypeError):
+        # Fallback for older PyTorch versions that don't have safe_globals
+        # or if safe_globals doesn't accept the DetectionModel class
+        try:
+            return YOLO(model_path)
+        except Exception as e:
+            # If both methods fail, log the error and re-raise
+            logging.error(f"[Impact Pack/Subpack] Failed to load YOLO model from {model_path}: {e}")
+            raise
 
 def inference_bbox(
     model,
