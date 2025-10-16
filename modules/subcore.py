@@ -168,6 +168,69 @@ try:
 
     torch_whitelist = []
 
+    # https://github.com/comfyanonymous/ComfyUI/issues/5516#issuecomment-2466152838
+    # def build_torch_whitelist():
+    #     """
+    #     For security, only a limited set of namespaces is allowed during loading.
+
+    #     Since the same module may be identified by different namespaces depending on the model,
+    #     some modules are additionally registered with aliases to ensure backward compatibility.
+    #     """
+    #     global torch_whitelist
+
+    #     for name, obj in inspect.getmembers(modules):
+    #         if inspect.isclass(obj) and obj.__module__.startswith("ultralytics.nn.modules"):
+    #             aliasObj = type(name, (obj,), {})
+    #             aliasObj.__module__ = "ultralytics.nn.modules"
+
+    #             torch_whitelist.append(obj)
+    #             torch_whitelist.append(aliasObj)
+
+    #     for name, obj in inspect.getmembers(block_modules):
+    #         if inspect.isclass(obj) and obj.__module__.startswith("ultralytics.nn.modules"):
+    #             aliasObj = type(name, (obj,), {})
+    #             aliasObj.__module__ = "ultralytics.nn.modules.block"
+
+    #             torch_whitelist.append(obj)
+    #             torch_whitelist.append(aliasObj)
+
+    #     for name, obj in inspect.getmembers(loss_modules):
+    #         if inspect.isclass(obj) and obj.__module__.startswith("ultralytics.utils.loss"):
+    #             aliasObj = type(name, (obj,), {})
+    #             aliasObj.__module__ = "ultralytics.yolo.utils.loss"
+
+    #             torch_whitelist.append(obj)
+    #             torch_whitelist.append(aliasObj)
+
+    #     for name, obj in inspect.getmembers(torch_modules):
+    #         if inspect.isclass(obj) and obj.__module__.startswith("torch.nn.modules"):
+    #             torch_whitelist.append(obj)
+
+    #     aliasIterableSimpleNamespace = type("IterableSimpleNamespace", (IterableSimpleNamespace,), {})
+    #     aliasIterableSimpleNamespace.__module__ = "ultralytics.yolo.utils"
+
+    #     aliasTaskAlignedAssigner = type("TaskAlignedAssigner", (TaskAlignedAssigner,), {})
+    #     aliasTaskAlignedAssigner.__module__ = "ultralytics.yolo.utils.tal"
+
+    #     aliasYOLOv10DetectionModel = type("YOLOv10DetectionModel", (DetectionModel,), {})
+    #     aliasYOLOv10DetectionModel.__module__ = "ultralytics.nn.tasks"
+    #     aliasYOLOv10DetectionModel.__name__ = "YOLOv10DetectionModel"
+
+    #     aliasv10DetectLoss = type("v10DetectLoss", (loss_modules.E2EDetectLoss,), {})
+    #     aliasv10DetectLoss.__name__ = "v10DetectLoss"
+    #     aliasv10DetectLoss.__module__ = "ultralytics.utils.loss"
+
+    #     torch_whitelist += [DetectionModel, aliasYOLOv10DetectionModel, SegmentationModel, IterableSimpleNamespace,
+    #                         aliasIterableSimpleNamespace, TaskAlignedAssigner, aliasTaskAlignedAssigner, aliasv10DetectLoss,
+    #                         restricted_getattr, dill._dill._load_type, scalar, dtype, Float64DType]
+
+    # build_torch_whitelist()
+
+    # Add getattr to safe globals for PyTorch 2.6+ compatibility
+    if hasattr(torch.serialization, 'add_safe_globals'):
+        torch.serialization.add_safe_globals([getattr])
+        logging.info("[Impact Pack/Subpack] Added getattr to PyTorch safe globals for YOLO model compatibility")
+
 except Exception as e:
     logging.error(e)
     logging.error("\n!!!!!\n\n[ComfyUI-Impact-Subpack] If this error occurs, please check the following link:\n\thttps://github.com/ltdrdata/ComfyUI-Impact-Pack/blob/Main/troubleshooting/TROUBLESHOOTING.md\n\n!!!!!\n")
@@ -323,6 +386,10 @@ def inference_bbox(
     confidence: float = 0.3,
     device: str = "",
 ):
+    # If device is empty and CUDA/ROCm is available, use it
+    if not device and torch.cuda.is_available():
+        device = "cuda"
+    
     pred = model(image, conf=confidence, device=device)
 
     bboxes = pred[0].boxes.xyxy.cpu().numpy()
@@ -362,6 +429,10 @@ def inference_segm(
     confidence: float = 0.3,
     device: str = "",
 ):
+    # If device is empty and CUDA/ROCm is available, use it
+    if not device and torch.cuda.is_available():
+        device = "cuda"
+    
     pred = model(image, conf=confidence, device=device)
 
     bboxes = pred[0].boxes.xyxy.cpu().numpy()
