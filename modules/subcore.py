@@ -3,6 +3,7 @@ from PIL import Image
 import cv2
 import numpy as np
 import torch
+import contextlib
 from collections import namedtuple
 from . import utils
 import inspect
@@ -310,11 +311,29 @@ def torch_wrapper(*args, **kwargs):
 
 # --- End: Replacement block for the torch_wrapper function ---
 
-torch.load = torch_wrapper
+
+@contextlib.contextmanager
+def safe_torch_load():
+    """Temporarily install the weights_only-enforcing torch.load wrapper.
+
+    Scoped to this pack's own model loads instead of a process-wide
+    `torch.load = torch_wrapper`. A global replacement clobbers (and is
+    clobbered by) other custom node packs that also wrap torch.load, with
+    last-import-wins, non-deterministic results; it also silently changes
+    torch.load behavior for ComfyUI core and every other pack. Scoping keeps
+    the weights_only safety for our YOLO loads without that interference.
+    """
+    previous = torch.load
+    torch.load = torch_wrapper
+    try:
+        yield
+    finally:
+        torch.load = previous
 
 
 def load_yolo(model_path: str):
-    return YOLO(model_path)
+    with safe_torch_load():
+        return YOLO(model_path)
     
 
 def inference_bbox(
