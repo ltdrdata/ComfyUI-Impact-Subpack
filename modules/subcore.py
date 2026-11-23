@@ -314,8 +314,17 @@ torch.load = torch_wrapper
 
 
 def load_yolo(model_path: str):
-    return YOLO(model_path)
-    
+    # ultralytics sets CUBLAS_WORKSPACE_CONFIG when it makes a model. PyTorch reads the variable on every cuBLAS call,
+    # so after the first call a new value gives cuBLAS a size that the workspace it already has does not have.
+    workspace_config = os.environ.get("CUBLAS_WORKSPACE_CONFIG")
+    try:
+        return YOLO(model_path)
+    finally:
+        if workspace_config is None:
+            os.environ.pop("CUBLAS_WORKSPACE_CONFIG", None)
+        else:
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = workspace_config
+
 
 def inference_bbox(
     model,
