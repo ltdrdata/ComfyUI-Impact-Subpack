@@ -326,13 +326,22 @@ def load_yolo(model_path: str):
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = workspace_config
 
 
+def predict(model, image, confidence, device):
+    # On the CPU ultralytics sets torch to 8 threads at most when it predicts, and the thread that runs the nodes keeps that.
+    threads = torch.get_num_threads()
+    try:
+        return model(image, conf=confidence, device=device)
+    finally:
+        torch.set_num_threads(threads)
+
+
 def inference_bbox(
     model,
     image: Image.Image,
     confidence: float = 0.3,
     device: str = "",
 ):
-    pred = model(image, conf=confidence, device=device)
+    pred = predict(model, image, confidence, device)
 
     bboxes = pred[0].boxes.xyxy.cpu().numpy()
     cv2_image = np.array(image)
@@ -371,7 +380,7 @@ def inference_segm(
     confidence: float = 0.3,
     device: str = "",
 ):
-    pred = model(image, conf=confidence, device=device)
+    pred = predict(model, image, confidence, device)
 
     bboxes = pred[0].boxes.xyxy.cpu().numpy()
     n, m = bboxes.shape
